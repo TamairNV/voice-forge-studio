@@ -97,7 +97,6 @@ dependencies = [
     # mlx-whisper/mlx-audio (depends on mlx — no wheels elsewhere).
     "parakeet-mlx>=0.5.2 ; sys_platform == 'darwin' and platform_machine == 'arm64'",
     "demucs>=4.0.1",
-    "yt-dlp>=2026.7.4",
     # >=1.16: alembic.ini relies on path_separator=os (new in 1.16.0), which
     # older alembic silently ignores and then colon-splits C:\ paths /
     # space-splits POSIX paths containing spaces.

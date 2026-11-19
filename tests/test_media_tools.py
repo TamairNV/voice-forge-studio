@@ -85,10 +85,10 @@ class _FakeResponse(io.BytesIO):
 def test_status_shape(mt):
     st = mt.status()
     assert set(st) >= {"ready", "tools", "ops", "platform_key"}
-    assert set(st["tools"]) == {"ffmpeg", "ffprobe", "ytdlp"}
+    assert set(st["tools"]) == {"ffmpeg", "ffprobe"}
     for tool in ("ffmpeg", "ffprobe"):
         assert set(st["tools"][tool]) >= {"tool", "ok", "path", "version", "origin"}
-    assert set(st["ops"]) == {"acquire", "ytdlp_update"}
+    assert set(st["ops"]) == {"acquire"}
     assert isinstance(st["ready"], bool)
 
 
@@ -113,14 +113,6 @@ def test_origin_custom_vs_sidecar_disambiguated_by_pref(mt, monkeypatch):
     # Same env var persisted through the Settings override → custom.
     prefs.set_("env.FFMPEG_PATH", path)
     assert mt._classify_origin("ffmpeg", path) == "custom"
-
-
-def test_ytdlp_reports_module_version_without_binary(mt):
-    st = mt._ytdlp_status()
-    # yt-dlp is a locked module — always importable in a healthy install.
-    assert st["ok"] is True
-    assert st["origin"] == "bundled"
-    assert st["version"]
 
 
 # ── download validation ─────────────────────────────────────────────────────
@@ -332,82 +324,6 @@ def test_unknown_tool_rejected_everywhere(mt):
         mt.restore_bundled("nano")
 
 
-# ── yt-dlp overlay ──────────────────────────────────────────────────────────
-
-def _fake_wheel(version: str) -> bytes:
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w") as zf:
-        zf.writestr("yt_dlp/__init__.py", "")
-        zf.writestr("yt_dlp/version.py", f"__version__ = '{version}'\n")
-        zf.writestr(f"yt_dlp-{version}.dist-info/METADATA", "Name: yt-dlp\n")
-    return buf.getvalue()
-
-
-def test_update_ytdlp_builds_overlay_and_records_baseline(mt, monkeypatch):
-    import core.prefs as prefs
-    wheel = _fake_wheel("2099.01.01")
-    monkeypatch.setattr(mt, "_fetch_pypi_ytdlp", lambda: (
-        "2099.01.01", "https://example.test/yt_dlp.whl",
-        hashlib.sha256(wheel).hexdigest(),
-    ))
-    with patch("urllib.request.urlopen", return_value=_FakeResponse(wheel)):
-        state = mt.update_ytdlp(wait=True)
-    assert state["state"] == "done"
-    assert state["version"] == "2099.01.01"
-    overlay_pkg = os.path.join(mt._ytdlp_overlay_dir(), "yt_dlp")
-    assert os.path.isfile(os.path.join(overlay_pkg, "version.py"))
-    assert mt._read_ytdlp_version(overlay_pkg) == "2099.01.01"
-    # dist-info never lands in the overlay (only the package itself).
-    assert not any("dist-info" in n for n in os.listdir(mt._ytdlp_overlay_dir()))
-    # The pre-update locked version was recorded as the restore target.
-    assert prefs.get("media_tools.ytdlp_baseline")
-    st = mt.status()["tools"]["ytdlp"]
-    assert st["overlay_version"] == "2099.01.01"
-
-
-def test_update_ytdlp_rejects_checksum_mismatch(mt, monkeypatch):
-    wheel = _fake_wheel("2099.01.01")
-    monkeypatch.setattr(mt, "_fetch_pypi_ytdlp", lambda: (
-        "2099.01.01", "https://example.test/yt_dlp.whl", "0" * 64,
-    ))
-    with patch("urllib.request.urlopen", return_value=_FakeResponse(wheel)):
-        state = mt.update_ytdlp(wait=True)
-    assert state["state"] == "error"
-    assert "checksum" in state["error"]
-    assert not os.path.isdir(mt._ytdlp_overlay_dir())
-
-
-def test_restore_ytdlp_deletes_overlay(mt, monkeypatch):
-    wheel = _fake_wheel("2099.01.01")
-    monkeypatch.setattr(mt, "_fetch_pypi_ytdlp", lambda: (
-        "2099.01.01", "https://example.test/yt_dlp.whl",
-        hashlib.sha256(wheel).hexdigest(),
-    ))
-    with patch("urllib.request.urlopen", return_value=_FakeResponse(wheel)):
-        mt.update_ytdlp(wait=True)
-    assert os.path.isdir(mt._ytdlp_overlay_dir())
-    mt.restore_ytdlp()
-    assert not os.path.isdir(mt._ytdlp_overlay_dir())
-
-
-def test_activate_overlay_prepends_sys_path(mt, monkeypatch):
-    import sys as _sys
-    overlay = mt._ytdlp_overlay_dir()
-    os.makedirs(os.path.join(overlay, "yt_dlp"), exist_ok=True)
-    monkeypatch.setattr(_sys, "path", list(_sys.path))
-    assert mt.activate_ytdlp_overlay() is True
-    assert _sys.path[0] == overlay
-    # Idempotent.
-    assert mt.activate_ytdlp_overlay() is False
-
-
-def test_ytdlp_invocation_prefers_module_over_path(mt):
-    argv, env = mt.ytdlp_invocation()
-    import sys as _sys
-    assert argv[:3] == [_sys.executable, "-m", "yt_dlp"]
-    assert env is None  # no overlay → inherit environment
-
-
 # ── router ──────────────────────────────────────────────────────────────────
 
 def test_router_status_and_acquire_endpoints(mt, monkeypatch):
@@ -454,28 +370,13 @@ def test_router_use_system_maps_lookup_to_404(mt, monkeypatch):
     assert r.status_code == 404
 
 
-def test_router_ytdlp_routes_not_shadowed_by_tool_param(mt, monkeypatch):
-    """/media-tools/ytdlp/restore must hit the overlay-restore handler, not
-    the parametrized {tool}/restore (which would 400 on 'ytdlp')."""
-    c = _client()
-    r = c.post("/media-tools/ytdlp/restore")
-    assert r.status_code == 200
-    assert r.json()["tool"] == "yt-dlp"
-
-    monkeypatch.setattr(mt, "update_ytdlp", lambda wait=False: {"state": "running", "progress": 0.0, "error": None, "version": None})
-    r = c.post("/media-tools/ytdlp/update")
-    assert r.status_code == 200
-    assert r.json()["state"] == "running"
-
-
 def test_router_is_admin_gated(mt):
     from main import app
-    c = TestClient(app)  # client.host = 'testclient' → non-loopback
+    c = TestClient(app)  # client.host = 'testclient' -> non-loopback
     for method, path in [
         ("get", "/media-tools/status"),
         ("post", "/media-tools/acquire"),
         ("post", "/media-tools/ffmpeg/use-system"),
-        ("post", "/media-tools/ytdlp/update"),
     ]:
         r = getattr(c, method)(path)
         assert r.status_code == 403, f"{path} must be admin-only"
@@ -491,8 +392,6 @@ def test_server_mode_media_tool_mutations_require_api_key(mt, monkeypatch):
     assert remote.get("/media-tools/status").status_code == 200
     for path in (
         "/media-tools/acquire",
-        "/media-tools/ytdlp/update",
-        "/media-tools/ytdlp/restore",
         "/media-tools/ffmpeg/use-system",
     ):
         assert remote.post(path).status_code == 403, path
@@ -550,54 +449,6 @@ def test_acquire_preserves_destination_backup_error(mt, monkeypatch):
     assert state['state'] == 'error'
     assert 'destination permanently locked' in state['error']
     assert 1 < len(calls) <= 10  # bounded, no background retry loop
-
-
-def test_ytdlp_update_recovers_from_locked_overlay(mt, monkeypatch):
-    import errno
-    import time
-    wheel = _fake_wheel('2099.01.01')
-    monkeypatch.setattr(mt, '_fetch_pypi_ytdlp', lambda: (
-        '2099.01.01', 'https://example.test/yt_dlp.whl', hashlib.sha256(wheel).hexdigest(),
-    ))
-    overlay = mt._ytdlp_overlay_dir()
-    original_replace = mt.os.replace
-    attempts = []
-
-    def replace(src, dst):
-        if dst == overlay:
-            attempts.append(dst)
-            if len(attempts) < 3:
-                raise PermissionError(errno.EACCES, 'scanner holds overlay', src)
-        return original_replace(src, dst)
-
-    monkeypatch.setattr(mt.os, 'replace', replace)
-    monkeypatch.setattr(time, 'sleep', lambda seconds: None)
-    with patch('urllib.request.urlopen', return_value=_FakeResponse(wheel)):
-        state = mt.update_ytdlp(wait=True)
-    assert state['state'] == 'done', state
-    assert mt._read_ytdlp_version(os.path.join(overlay, 'yt_dlp')) == '2099.01.01'
-
-
-def test_restore_ytdlp_reports_locked_overlay_instead_of_claiming_success(mt, monkeypatch):
-    import errno
-    import time
-    overlay = mt._ytdlp_overlay_dir()
-    os.makedirs(overlay)
-    original_rmtree = mt.shutil.rmtree
-
-    def rmtree(path, *args, **kwargs):
-        if path == overlay:
-            if kwargs.get('ignore_errors'):
-                return
-            raise PermissionError(errno.EACCES, 'overlay still in use', path)
-        return original_rmtree(path, *args, **kwargs)
-
-    monkeypatch.setattr(mt.shutil, 'rmtree', rmtree)
-    monkeypatch.setattr(time, 'sleep', lambda seconds: None)
-    mt._ops['ytdlp_update'].update(state='done', version='2099.01.01')
-    with pytest.raises(PermissionError, match='overlay still in use'):
-        mt.restore_ytdlp()
-    assert mt._ops['ytdlp_update']['version'] == '2099.01.01'
 
 
 def test_media_install_does_not_retry_non_lock_errors(mt, monkeypatch):
@@ -674,19 +525,3 @@ def test_locked_backup_cleanup_does_not_fail_successful_update(mt, monkeypatch, 
     monkeypatch.setattr(time, 'sleep', lambda _: None)
     mt._install_staged_directory(str(staged), str(target))
     assert (target / 'version').read_text(encoding="utf-8") == 'new'
-
-
-def test_restore_ytdlp_propagates_overlay_stat_denial(mt, monkeypatch):
-    import errno
-    overlay = mt._ytdlp_overlay_dir()
-    os.makedirs(overlay)
-    original_stat = mt.os.stat
-    def stat(path, *args, **kwargs):
-        if os.fspath(path) == overlay:
-            raise PermissionError(errno.EACCES, 'overlay access denied', path)
-        return original_stat(path, *args, **kwargs)
-    monkeypatch.setattr(mt.os, 'stat', stat)
-    mt._ops['ytdlp_update'].update(state='done', version='2099.01.01')
-    with pytest.raises(PermissionError, match='overlay access denied'):
-        mt.restore_ytdlp()
-    assert mt._ops['ytdlp_update']['version'] == '2099.01.01'

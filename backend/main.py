@@ -657,13 +657,6 @@ def _phase_a_build_inner() -> None:
     # MIOPEN_FIND_MODE (shell, `.env`, Docker) still wins; `setdefault` is
     # load-bearing, never an assignment.
     os.environ.setdefault("MIOPEN_FIND_MODE", "FAST")
-    # yt-dlp user-update overlay: must run before anything imports yt_dlp so
-    # a user-updated version wins over the locked wheel. Best-effort.
-    try:
-        from services.media_tools import activate_ytdlp_overlay
-        activate_ytdlp_overlay()
-    except Exception:
-        pass
     # #1256: publish resolved ffmpeg/ffprobe dirs on PATH for dependencies
     # that shell out by bare name — after prefs restored any FFMPEG_PATH
     # override, before any engine loads.

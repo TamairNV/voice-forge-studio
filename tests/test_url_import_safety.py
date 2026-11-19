@@ -4,12 +4,10 @@ Covers the up-front 400s on both import routes, option-like input never
 reaching yt-dlp, the connect-time guard (which is what stops redirects and
 discovered URLs), the opt-in, and the restricted upload extensions.
 """
-import http.server
 import os
 import socket
 import subprocess
 import sys
-import threading
 
 os.environ.setdefault("OMNIVOICE_MODEL", "test")
 os.environ.setdefault("OMNIVOICE_DISABLE_FILE_LOG", "1")
@@ -170,39 +168,7 @@ def test_ws_tts_emotion_clip_must_live_in_app_folders(tmp_path, monkeypatch):
             tts_stream.resolve_emotion_clip(value)
 
 
-# ── Connect-time guard (redirects, discovered URLs, the real yt-dlp) ─────
-
-
-class _Recorder(http.server.BaseHTTPRequestHandler):
-    hits: list
-
-    def do_GET(self):  # noqa: N802 - stdlib hook name
-        self.hits.append(self.path)
-        location = getattr(self.server, "redirect_to", None)
-        if location:
-            self.send_response(302)
-            self.send_header("Location", location)
-            self.end_headers()
-            return
-        self.send_response(200)
-        self.send_header("Content-Type", "text/html")
-        self.end_headers()
-        self.wfile.write(b"<html><title>x</title></html>")
-
-    def log_message(self, *args):
-        pass
-
-
-def _serve(host="127.0.0.1", redirect_to=None):
-    hits = []
-    handler = type("H", (_Recorder,), {"hits": hits})
-    try:
-        server = http.server.ThreadingHTTPServer((host, 0), handler)
-    except OSError:
-        pytest.skip(f"cannot bind {host}")
-    server.redirect_to = redirect_to
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    return server, hits
+# ── Connect-time guard ───────────────────────────────────────────────────
 
 
 def test_guard_is_scoped_to_the_guarded_thread():
@@ -258,49 +224,6 @@ def test_reinstall_keeps_nested_guards_idempotent_and_other_threads_unrestricted
                 socket.getaddrinfo("127.0.0.1", 80)
             assert worker.submit(socket.getaddrinfo, "127.0.0.1", 80).result(timeout=5)
     assert socket.getaddrinfo("127.0.0.1", 80)
-
-
-def test_in_process_ytdlp_cannot_follow_a_redirect_to_a_private_host(monkeypatch):
-    import yt_dlp
-
-    target, target_hits = _serve("127.0.0.2")
-    entry, entry_hits = _serve(redirect_to=f"http://127.0.0.2:{target.server_address[1]}/secret")
-    # Treat the entry server as "public" so only the redirect target is private.
-    monkeypatch.setattr(url_safety, "is_public_address", lambda ip: ip == "127.0.0.1")
-    monkeypatch.setattr(url_safety, "_proxy_hosts", lambda: frozenset())
-    try:
-        with url_safety.guard_outbound_connections(), yt_dlp.YoutubeDL(
-            {"quiet": True, "no_warnings": True, "retries": 0, "extractor_retries": 0, "proxy": ""}
-        ) as ydl:
-            with pytest.raises(yt_dlp.utils.DownloadError):
-                ydl.extract_info(f"http://127.0.0.1:{entry.server_address[1]}/start", download=False)
-    finally:
-        entry.shutdown()
-        target.shutdown()
-    assert entry_hits == ["/start"]
-    assert target_hits == []
-
-
-def test_guarded_ytdlp_subprocess_never_connects_to_a_private_host(tmp_path):
-    from services.media_tools import guarded_ytdlp_invocation
-
-    server, hits = _serve()
-    argv, env = guarded_ytdlp_invocation()
-    env = dict(env or os.environ)
-    env.pop(ALLOW_PRIVATE_ENV, None)
-    for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"):
-        env.pop(name, None)
-    try:
-        result = subprocess.run(
-            [*argv, "--simulate", "--retries", "0", "--", f"http://127.0.0.1:{server.server_address[1]}/x"],
-            capture_output=True, text=True, timeout=120, env=env, cwd=tmp_path,
-        )
-    finally:
-        server.shutdown()
-    assert argv[0] == sys.executable
-    assert result.returncode != 0
-    assert "private network address" in result.stderr
-    assert hits == []
 
 
 def test_policy_check_sees_private_answers_inside_the_connect_guard(monkeypatch):

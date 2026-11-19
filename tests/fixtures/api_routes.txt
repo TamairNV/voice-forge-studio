@@ -170,8 +170,6 @@ POST /export/reveal
 POST /generate
 POST /longform/render
 POST /media-tools/acquire
-POST /media-tools/ytdlp/restore
-POST /media-tools/ytdlp/update
 POST /media-tools/{tool}/custom-path
 POST /media-tools/{tool}/restore
 POST /media-tools/{tool}/use-system

@@ -32,12 +32,6 @@ def _function(path: str, name: str) -> tuple[ast.FunctionDef | ast.AsyncFunction
 def test_dynamic_updates_only_interpolate_allowlisted_columns_and_placeholders():
     cases = (
         (
-            "backend/api/routers/glossary.py",
-            "update_term",
-            '("source", "target", "note")',
-            "UPDATE glossary_terms",
-        ),
-        (
             "backend/api/routers/profiles.py",
             "update_profile",
             '("name", "ref_text", "instruct", "language", "personality")',
@@ -74,17 +68,6 @@ def test_media_download_sink_requires_https_size_and_sha256():
     assert "done != expected_size" in body
     assert "digest != expected_sha256" in body
     assert body.index('url.startswith("https://")') < body.index("urlopen(")
-
-
-def test_pypi_metadata_and_wheel_digest_reach_the_verified_download_sink():
-    source = _source("backend/services/media_tools.py")
-    assert '_PYPI_YTDLP_URL = "https://pypi.org/pypi/yt-dlp/json"' in source
-    _, fetch = _function("backend/services/media_tools.py", "_fetch_pypi_ytdlp")
-    assert 'artifact["url"]' in fetch
-    assert 'artifact["digests"]["sha256"]' in fetch
-    _, update = _function("backend/services/media_tools.py", "_do_update_ytdlp")
-    assert "version, url, sha = _fetch_pypi_ytdlp()" in update
-    assert '_download(url, whl, sha, None, op="ytdlp_update")' in update
 
 
 def test_diagnostic_probe_is_a_guarded_constant_https_head_request():
