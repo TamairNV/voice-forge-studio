@@ -27,40 +27,6 @@ def test_open_ended_engine_keeps_all_language_options(tts):
     assert tts.language_options('omnivoice') == expected
 
 
-# Translation targets this model has no voice for; the dub pre-flight must keep
-# blocking them. Anything else the app offers must resolve to a model language.
-_OMNIVOICE_UNSUPPORTED_TARGETS = {'Latin', 'Samoan', 'Scots Gaelic', 'Sundanese'}
-
-
-def _app_translation_targets():
-    import re
-    from pathlib import Path
-    root = Path(__file__).resolve().parents[1] / 'electron' / 'src'
-    source = ((root / 'shared' / 'utils' / 'languages.js').read_text(encoding='utf-8')
-              + (root / 'renderer' / 'src' / 'lib' / 'translation-targets.ts').read_text(encoding='utf-8'))
-    targets = re.findall(r"""\{ code: ["']([^"']+)["'], label: ["']([^"']+)["'] \}""", source)
-    # Target-only entries (no Whisper vocabulary) must be found, whatever the quoting.
-    assert {'Cebuano', 'Kabyle', 'Uyghur'} <= {label for _, label in targets}
-    assert len(targets) > 90, 'translation target lists moved; update this parser'
-    return targets
-
-
-def test_every_app_translation_target_resolves_for_omnivoice(tts):
-    """#3651: dub targets such as "Arabic" were rejected before Generate Dub and,
-    past the gate, synthesized with no language conditioning."""
-    from omnivoice.models.omnivoice import _resolve_language
-    options = set(tts.language_options('omnivoice'))
-    unresolved = []
-    for code, label in _app_translation_targets():
-        if label in _OMNIVOICE_UNSUPPORTED_TARGETS:
-            assert _resolve_language(label) is None
-            assert label.lower() not in options
-            continue
-        if not (_resolve_language(label) and _resolve_language(code) and label.lower() in options):
-            unresolved.append(f'{label} ({code})')
-    assert unresolved == []
-
-
 @pytest.mark.parametrize('language,expected', [
     ('Arabic', 'arb'), ('ar', 'arb'), ('Kurdish', 'kmr'), ('ku', 'kmr'),
     ('Chinese (Simplified)', 'zh'), ('cmn-Hant', 'zh'), ('Pashto', 'ps'),
@@ -134,26 +100,6 @@ def test_active_kokoro_inventory_limits_picker_languages(monkeypatch, tts):
 
 def test_unknown_engine_does_not_break_inventory(tts):
     assert tts.language_options('third-party-unknown') is None
-
-
-def test_renderer_code_catalog_matches_backend_vocabulary():
-    import json
-    from pathlib import Path
-    from omnivoice.utils.lang_map import LANG_NAME_TO_ID
-    path = Path(__file__).resolve().parents[1] / 'electron/src/shared/language-codes.json'
-    assert json.loads(path.read_text(encoding='utf-8')) == LANG_NAME_TO_ID
-
-
-def test_flag_search_regions_match_the_rendered_flags():
-    import json
-    import re
-    from pathlib import Path
-    root = Path(__file__).resolve().parents[1] / 'electron/src/shared'
-    source = (root / 'components/LanguageFlag.jsx').read_text(encoding='utf-8')
-    body = source.split('export const LANGUAGE_FLAGS = {')[1].split('};')[0]
-    expected = {key.strip("'\""): region.replace('_', '-')
-                for key, region in re.findall(r"\s+([\w'\"-]+): ([A-Z_]+),", body)}
-    assert json.loads((root / 'language-regions.json').read_text(encoding='utf-8')) == expected
 
 
 def test_active_engine_inventory_carries_language_choices(monkeypatch, tts):

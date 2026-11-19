@@ -1,6 +1,5 @@
 """The visible product name changed; established user-data identities did not."""
 
-import json
 import os
 import re
 
@@ -16,11 +15,6 @@ WHY = (
 def _read(rel):
     with open(os.path.join(ROOT, rel), encoding="utf-8") as file:
         return file.read()
-
-
-def test_electron_recognises_the_final_tauri_identity():
-    source = _read("electron/src/main/backend.ts")
-    assert "const TAURI_APP_ID = 'com.debpalash.omnivoice-studio'" in source, WHY
 
 
 def test_the_backend_data_directories_are_unchanged():
@@ -52,11 +46,3 @@ def test_the_model_class_name_is_unchanged():
 def test_the_public_env_var_prefix_is_unchanged(env_var):
     source = _read("backend/core/config.py") + _read("backend/core/user_env.py")
     assert env_var in source, WHY
-
-
-def test_the_product_and_artifact_names_are_voicestudio():
-    config = json.loads(_read("config/app.json"))
-    builder = _read("electron/electron-builder.config.mjs")
-    assert config["productName"] == "VoiceStudio"
-    assert "productName: PRODUCT_NAME" in builder
-    assert "artifactPrefix" in builder

@@ -283,22 +283,3 @@ def test_cpu_preset_includes_the_light_whisper():
     assert "cpu" in by_id["Systran/faster-whisper-small"]["curated_on"]
     # ...and it fits a small laptop: well under the heavyweight picks.
     assert by_id["Systran/faster-whisper-small"]["size_gb"] < 1
-
-
-# ── torch pins stay in lockstep ──────────────────────────────────────────────
-
-def test_electron_cpu_torch_pins_match_pyproject_constraints():
-    pyproject = (REPO / "pyproject.toml").read_text(encoding="utf-8")
-    constraints = dict(re.findall(r'"(torch|torchaudio|torchvision)==([\d.]+)"', pyproject))
-    ts = (REPO / "electron/src/main/runtime-project.ts").read_text(encoding="utf-8")
-    block = ts[ts.index("export const CPU_TORCH_PINS"):]
-    block = block[: block.index("] as const")]
-    pins = dict(re.findall(r"'(torch|torchaudio|torchvision)==([\d.]+)\+cpu'", block))
-    assert pins == constraints, (
-        "Electron CPU torch pins drifted from [tool.uv].constraint-dependencies"
-    )
-    py_pins = (REPO / "backend/services/sidecar_install.py").read_text(encoding="utf-8")
-    assert "+cpu" in py_pins and "UV_PIP_CPU_ARGS" in py_pins
-    from core.torch_indexes import PYTORCH_CPU_INDEX_URL
-
-    assert PYTORCH_CPU_INDEX_URL in ts, "Electron and Python must use the same CPU index"

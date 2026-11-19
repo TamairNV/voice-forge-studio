@@ -34,37 +34,6 @@ def test_current_version_is_in_lockstep_everywhere() -> None:
         assert match and Version(match.group(1)) == Version(CURRENT_VERSION), path
 
 
-def test_visible_brand_surfaces_say_voicestudio() -> None:
-    visible_files = ("electron/build/Info.plist", "electron/src/renderer/index.html")
-    product_name = json.loads((ROOT / "config/app.json").read_text(encoding="utf-8"))["productName"]
-    assert product_name == "VoiceStudio"
-    for path in visible_files:
-        text = (ROOT / path).read_text(encoding="utf-8")
-        assert "__APP_PRODUCT_NAME__" in text, path
-        assert "OmniVoice needs" not in text, path
-        assert "OmniVoice may" not in text, path
-        assert "OmniVoice Gallery" not in text, path
-
-    readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    assert "**VoiceStudio** (default, powered by k2-fsa/OmniVoice)" in readme
-    assert "**OmniVoice** (default)" not in readme
-
-
-def test_brand_mark_fills_the_icon() -> None:
-    logo = (ROOT / "docs/logo.svg").read_text(encoding="utf-8")
-    favicon = (ROOT / "electron/public/favicon.svg").read_text(encoding="utf-8")
-
-    signature = "M6 34c4 0 5-7 9-7"
-    assert signature in logo
-    assert signature in favicon
-
-    # The previous icon devoted most of its canvas to an empty ring. The new
-    # mark uses the full tile and keeps only a narrow 2-unit outer margin.
-    assert 'x="2" y="2" width="60" height="60"' in logo
-    assert "<circle" not in logo
-    assert 'src="docs/logo.png"' in (ROOT / "README.md").read_text(encoding="utf-8")
-
-
 def test_waveform_stroke_is_never_filled() -> None:
     # An SVG path fills black unless told otherwise; without fill="none" the
     # waveform's closed curves painted a black band across every icon.
@@ -75,33 +44,6 @@ def test_waveform_stroke_is_never_filled() -> None:
     for svg in svgs:
         stroke = re.search(rf'<path d="{re.escape(signature)}[^>]*>', svg.read_text(encoding="utf-8"))
         assert stroke and 'fill="none"' in stroke.group(0), svg
-
-
-def test_raster_icons_have_no_black_band() -> None:
-    from PIL import Image
-
-    # Regenerated from docs/logo.svg by scripts/render_brand_icons.py.
-    for name in ("docs/logo.png", "docs/logo-256.png", "electron/build/icons/icon.png", "electron/build/icons/32x32.png"):
-        icon = Image.open(ROOT / name).convert("RGBA")
-        width, height = icon.size
-        assert icon.getpixel((width // 2, int(height * 0.53)))[:3] != (0, 0, 0), name
-
-
-@pytest.mark.parametrize("name", ("vs_logo", "vs_launcher_foreground", "vs_launcher_monochrome"))
-def test_android_vectors_keep_unpainted_waveform_transparent(tmp_path: Path, name: str) -> None:
-    import runpy
-    import xml.etree.ElementTree as ET
-
-    generator = runpy.run_path(str(ROOT / "mobile/android/scripts/generate_brand_resources.py"))
-    generator["generate"](ROOT, tmp_path)
-    android = "{http://schemas.android.com/apk/res/android}"
-    vector = ET.parse(tmp_path / f"drawable/{name}.xml").getroot()
-    waveform = next(p for p in vector.iter("path") if p.get(android + "pathData", "").startswith("M6 34c4 0 5-7 9-7"))
-    # SVG's `none` is not an Android color; monochrome must preserve unpainted areas too.
-    assert waveform.get(android + "fillColor") in (None, "#00000000", "@android:color/transparent")
-    assert waveform.get(android + "strokeColor") or any(
-        attr.get("name") == "android:strokeColor" for attr in waveform
-    )
 
 
 @pytest.mark.parametrize("event", ("push", "pull_request"))

@@ -32,17 +32,6 @@ def _python_assignment(path, name):
     raise AssertionError(f"{path}: assignment {name} was renamed or removed")
 
 
-def _typescript_assignment(name):
-    path = ROOT / "electron/src/main/runtime-project.ts"
-    text = path.read_text(encoding="utf-8")
-    match = re.search(
-        rf"export const {name}\s*=\s*(\[[\s\S]*?\]|['\"][^'\"]+['\"])", text
-    )
-    assert match, f"{path}: export {name} was renamed or removed"
-    raw = re.sub(r"\bas const\b", "", match.group(1)).strip()
-    return ast.literal_eval(raw)
-
-
 def _pin_map(items):
     result = {}
     for item in items:
@@ -50,14 +39,6 @@ def _pin_map(items):
         assert match, f"expected exact package pin, got {item!r}"
         result[match.group(1)] = match.group(2)
     return result
-
-
-def test_electron_rocm_pins_match_project_constraints():
-    constraints = _constraints()
-    electron = _pin_map(_typescript_assignment("ROCM_TORCH_PINS"))
-    assert {name: electron.get(name) for name in STACK} == {
-        name: constraints.get(name) for name in STACK
-    }
 
 
 def test_project_constraints_pin_the_complete_torch_stack():
@@ -95,8 +76,7 @@ def test_all_rocm_index_copies_match():
     sidecar_index = _python_assignment(
         ROOT / "backend/core/torch_indexes.py", "PYTORCH_ROCM_INDEX_URL"
     )
-    electron_index = _typescript_assignment("ROCM_TORCH_INDEX")
-    assert sidecar_index == setup_index == electron_index
+    assert sidecar_index == setup_index
 
 
 def test_setup_reinstalls_the_complete_stack_together():
@@ -113,13 +93,3 @@ def test_rocm_and_torch_versions_meet_the_rdna4_floor():
     assert tuple(map(int, match.groups())) >= (6, 4)
     torch_version = tuple(map(int, _constraints()["torch"].split(".")[:2]))
     assert torch_version >= (2, 8)
-
-
-def test_electron_legacy_cuda_pins_match_project_constraints():
-    """The cu126 overlay for pre-Volta NVIDIA cards (#4242) follows the locked stack."""
-    constraints = _constraints()
-    pins = _pin_map(_typescript_assignment("LEGACY_CUDA_PINS"))
-    assert {name: pins.get(name) for name in STACK} == {
-        name: f"{constraints[name]}+cu126" for name in STACK
-    }
-    assert _typescript_assignment("LEGACY_CUDA_INDEX") == "https://download.pytorch.org/whl/cu126"

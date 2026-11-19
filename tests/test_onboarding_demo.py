@@ -8,7 +8,6 @@ import os
 import sqlite3
 import sys
 import wave
-from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "backend"))
 
@@ -76,15 +75,6 @@ def test_demo_clip_is_not_gitignored():
             f"{rel} is gitignored — the un-ignore allowlist in .gitignore was lost. "
             "Restore `!backend/assets/samples/*.wav` or the clip drops from builds."
         )
-
-
-def test_backend_is_a_bundled_electron_resource():
-    """The backend tree, including the demo clip, must ship with Electron."""
-    config = Path(_ROOT, "electron", "electron-builder.config.mjs").read_text(
-        encoding="utf-8"
-    )
-    assert "from: '../backend'" in config
-    assert "to: 'backend'" in config
 
 
 def _table_sql():

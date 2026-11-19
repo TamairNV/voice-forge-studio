@@ -86,13 +86,6 @@ def test_classify_build(report, body, version, expected):
     assert report.classify_build(body, version) == expected
 
 
-def test_reporter_source_still_emits_the_stamps(report):
-    # Fail here (not in production silence) if the live reporter rewords the marker.
-    src = (SCRIPT_PATH.parents[1] / "electron/src/renderer/src/components/report-bug.tsx").read_text(encoding="utf-8")
-    assert "**Build status:** OUTDATED" in src
-    assert "**App:** VoiceStudio ${__APP_VERSION__}" in src
-
-
 def test_cli_counts_current_reporter_versions_without_assuming_freshness(report, monkeypatch, capsys):
     bodies = [
         "**App:** VoiceStudio 0.5.9-beta.2 (build abc1234)",

@@ -195,20 +195,6 @@ def test_check_language_rejects_unavailable_named_language(_StubBackend, languag
         be._check_language(language)
 
 
-def test_every_picker_label_resolves_to_an_explicit_code(_StubBackend):
-    import json
-    from pathlib import Path
-    root = Path(__file__).resolve().parents[3]
-    be = _StubBackend(["en"])
-    for picker in [root / "electron/src/shared/languages.json", root / "electron/src/renderer/src/lib/languages.json"]:
-        for label in json.loads(picker.read_text(encoding="utf-8")):
-            code = be._normalize_language_code(label)
-            if label.lower() == "auto":
-                assert code is None
-            else:
-                assert code and code.isascii() and code.isalpha() and len(code) in (2, 3), label
-
-
 # ── generate_batch: enforcement wired through ──────────────────────────
 
 

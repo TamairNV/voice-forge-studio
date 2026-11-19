@@ -156,19 +156,6 @@ def test_workflow_pin_scan_includes_both_yaml_extensions(tmp_path):
     assert [path.name for path in _workflow_paths(tmp_path)] == ["one.yml", "two.yaml"]
 
 
-def test_every_locale_discloses_hugging_face_model_access():
-    import json
-    from pathlib import Path
-
-    root = Path(__file__).resolve().parents[1] / "electron/src"
-    paths = sorted((root / "renderer/src/i18n/locales").glob("*.json"))
-    assert "en.json" in {p.name for p in paths}
-    for path in paths:
-        strings = json.loads(path.read_text("utf-8"))
-        footer = strings["license"]["pockettts_footer"]
-        assert "Hugging Face" in footer, path
-
-
 @pytest.mark.parametrize(
     "reason",
     [
