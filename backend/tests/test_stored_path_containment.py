@@ -165,26 +165,6 @@ def test_audiobook_and_stream_resolvers_ignore_rows_outside_voices(escaped_voice
     assert tts_stream.build_stream_kwargs({"voice": "p1", "text": "hi"})["ref_audio"] == expected
 
 
-# ── call recordings ────────────────────────────────────────────────────────
-
-
-def test_call_recording_path_stays_in_the_calls_folder(tmp_path, monkeypatch):
-    from core import config
-    from services.telephony import calls
-
-    monkeypatch.setattr(config, "DATA_DIR", str(tmp_path))
-    (tmp_path / "calls").mkdir()
-    inside = tmp_path / "calls" / "c1.wav"
-    inside.write_bytes(b"RIFF")
-    outside = tmp_path / "secret.wav"
-    outside.write_bytes(b"RIFF")
-
-    _patch_db(monkeypatch, {"recording_path": str(outside)})
-    assert calls.recording_path("c1") is None
-    _patch_db(monkeypatch, {"recording_path": str(inside)})
-    assert calls.recording_path("c1") == str(inside)
-
-
 # ── profile uploads ────────────────────────────────────────────────────────
 
 

@@ -819,8 +819,6 @@ def _phase_a_build_inner() -> None:
         sfx,  # Tools > Sound effects (#3577): opt-in MOSS-SoundEffect sidecar
     )
     from api.routers import mcp_bindings as _mcp_bindings_router  # noqa: E402
-    from api.routers import telephony_twilio as _telephony_twilio_router  # noqa: E402
-    from api.routers import calls as _calls_router  # noqa: E402
     _router_modules.extend([
         system, profiles, profile_images, exports, generation, voice_convert, sfx, dub_core, dub_generate,
         dub_export, dub_translate, projects, glossary, engines, tools,
@@ -829,7 +827,6 @@ def _phase_a_build_inner() -> None:
         openai_compat, tts_stream, personas, sonitranslate,
         audiobook, longform_jobs, pronunciation, settings_router,
         media_tools_router, auth_router, _mcp_bindings_router,
-        _telephony_twilio_router, _calls_router,
     ])
     # Download-acceleration state, once, for triage-from-logs (FDL-03).
     try:
@@ -1247,13 +1244,6 @@ async def _phase_b(app: FastAPI) -> None:
 
     if mcp_mounted:
         logger.info("MCP server mounted at /mcp")
-    # Phone calls (opt-in): the separate loopback telephony listener resumes
-    # only when the user left the Twilio integration enabled.
-    try:
-        from api.routers.telephony_twilio import start_gateway_if_enabled
-        await start_gateway_if_enabled()
-    except Exception:
-        logger.exception("Telephony gateway startup failed (continuing without it)")
 
 
 async def _finalize_diagnostics(callback, timeout=2.5):
@@ -1426,11 +1416,6 @@ async def _application_lifespan(app: FastAPI):
     if _phase_a_started.is_set() and not _phase_a_finished.is_set():
         await asyncio.to_thread(_phase_a_finished.wait, 20.0)
     await _wait_for_profile_reconcile_thread(app)
-    try:
-        from services.telephony import gateway as telephony_gateway
-        await telephony_gateway.stop()
-    except Exception:
-        logger.exception("Telephony gateway shutdown failed")
     logger.info("Shutdown: cleaning up…")
     # Flip model_manager into shutdown mode, so a model load in flight (or
     # still queued) on a GPU-pool thread classifies executor rejections as a
