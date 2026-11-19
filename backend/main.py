@@ -1279,41 +1279,6 @@ async def _phase_b(app: FastAPI) -> None:
         logger.exception("Telephony gateway startup failed (continuing without it)")
 
 
-def _start_analytics_lifecycle(app: FastAPI, crash_record) -> None:
-    """Own optional analytics work without putting its disk I/O on readiness."""
-    from core import analytics
-
-    revision = analytics.startup_consent_revision()
-    app.state.analytics_worker = None
-
-    async def run():
-        try:
-            worker = asyncio.get_running_loop().run_in_executor(
-                None, lambda: analytics.record_startup_lifecycle(
-                    crash_record, consent_revision=revision,
-                ),
-            )
-            app.state.analytics_worker = worker
-            await asyncio.shield(worker)
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            logger.exception("Analytics startup lifecycle failed (non-fatal).")
-
-    app.state.analytics_task = asyncio.create_task(run())
-
-
-async def _wait_for_analytics_thread(app: FastAPI) -> None:
-    """Cancel unsubmitted work and retain the running worker until teardown."""
-    task = getattr(app.state, "analytics_task", None)
-    if task is not None and not task.done():
-        task.cancel()
-        await asyncio.gather(task, return_exceptions=True)
-    worker = getattr(app.state, "analytics_worker", None)
-    if worker is not None and not worker.done():
-        await asyncio.wait({worker}, timeout=20.0)
-
-
 async def _finalize_diagnostics(callback, timeout=2.5):
     """Bound private diagnostic IO independently of saturated inference executors."""
     loop = asyncio.get_running_loop()
@@ -1418,15 +1383,6 @@ async def _application_lifespan(app: FastAPI):
         run_sentinel.write_sentinel()
     except Exception:
         logger.exception("Run-sentinel startup failed (non-fatal).")
-    # Opt-in lifecycle analytics (core/analytics.py): install/update/crash
-    # events. A no-op without the user's explicit consent AND a build token.
-    # The run-sentinel record above is the ONE authoritative crash source —
-    # the desktop shell's markers cover the same deaths, so the frontend
-    # never emits a crash event (no double-count).
-    try:
-        _start_analytics_lifecycle(app, _crash_record)
-    except Exception:
-        logger.exception("Analytics startup lifecycle failed (non-fatal).")
 
     if _EAGER:
         # Pytest / opt-in embedders: today's exact behavior — everything done
@@ -1493,7 +1449,6 @@ async def _application_lifespan(app: FastAPI):
     if _phase_a_started.is_set() and not _phase_a_finished.is_set():
         await asyncio.to_thread(_phase_a_finished.wait, 20.0)
     await _wait_for_profile_reconcile_thread(app)
-    await _wait_for_analytics_thread(app)
     try:
         from services.telephony import gateway as telephony_gateway
         await telephony_gateway.stop()

@@ -135,24 +135,8 @@ def _app_version(value):
 
 
 def _diagnostic_destination():
-    """Diagnostic transport requires TLS, except exact loopback development URLs."""
-    from core.diagnostic_app_transport import app_destination
-    app = app_destination()
-    if app:
-        return app
-    from core.analytics import _destination
-    from core.analytics_transport import valid_url
-    destination = _destination()
-    if not isinstance(destination, dict) or not isinstance(destination.get('site'), str) or not re.fullmatch(r'[a-z0-9]{6,32}', destination['site']):
-        return {}
-    for key in ('host', 'appUrl'):
-        value = destination.get(key)
-        if not valid_url(value, origin=key == 'host'):
-            return {}
-        parsed = urlsplit(value)
-        if parsed.scheme != 'https' and parsed.hostname not in {'localhost', '127.0.0.1', '::1'}:
-            return {}
-    return destination
+    """Diagnostic upload is disabled in this fork."""
+    return {}
 
 
 def _schema():
@@ -873,24 +857,10 @@ class Reporter:
         if self.managed or not self.enabled:
             return
         self.pending = len(records)
-        if not self.transport:
-            destination = _diagnostic_destination()
-            if destination:
-                from core.analytics_transport import SupermetryTransport
-                from core.diagnostic_app_transport import AppDiagnosticTransport
-                with self.ack_lock:
-                    if self.enabled and self.epoch and not self.app_delivery_paused:
-                        epoch = self.epoch
-                        allowed = lambda:self.enabled and self.epoch == epoch and not self.app_delivery_paused and not self.stop.is_set() and not self._hard_killed()
-                        if destination.get('app_id'):
-                            self.transport = AppDiagnosticTransport(destination, allowed, on_result=lambda identity,status,reason:self._app_delivery_result(epoch,identity,status,reason),ttl_ms=_limit(self.schema,'ttl_ms',604800000))
-                        else:
-                            self.transport = SupermetryTransport(destination,allowed,on_result=lambda identity,status:self._delivery_result(epoch,identity,status))
         with self.ack_lock:
             transport, epoch, profile = self.transport, self.epoch, self.profile
         if transport:
-            from core.diagnostic_app_transport import AppDiagnosticTransport
-            app_transport = isinstance(transport, AppDiagnosticTransport)
+            app_transport = False
             if app_transport and transport.destination.get('sessionPings') and not self.correlation_retired:
                 if self.run_session_epoch is None:
                     self.run_session_id, self.run_session_event_id = uuid.uuid4().hex, uuid.uuid4().hex

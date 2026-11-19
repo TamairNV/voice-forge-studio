@@ -262,17 +262,6 @@ def record(exc: BaseException, route: str = "", trace: str = "") -> dict:
                 while len(_entries) > _MAX_ENTRIES:
                     _entries.popitem(last=False)
             _persist_locked()
-        # Opt-in analytics (core/analytics.py): a no-op unless the user opted
-        # in AND the build ships a token. Carries the error CLASS and the
-        # coarse route head ONLY — never the message, trace, or any path —
-        # deduped by fingerprint and hard-capped per session there. Lazy
-        # import + never raises: telemetry must not shadow the real error.
-        try:
-            from core import analytics
-
-            analytics.record_error_event(error_class, fp, stage=_coarse_stage(route))
-        except Exception:
-            pass
         return entry
     except Exception:
         return {"error_class": "UNKNOWN", "type": type(exc).__name__, "count": 1}

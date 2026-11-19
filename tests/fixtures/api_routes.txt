@@ -32,7 +32,6 @@ GET /api/cloud-sync/local/keys
 GET /api/cloud-sync/status
 GET /api/integrations/twilio/state
 GET /api/mcp/bindings
-GET /api/settings/analytics
 GET /api/settings/asr-openai-compat
 GET /api/settings/changelog
 GET /api/settings/compute-device
@@ -210,7 +209,6 @@ POST /api/cloud-sync/start
 POST /api/cloud-sync/stop
 POST /api/cloud-sync/use-choices-of/{device_id}
 POST /api/integrations/twilio/test
-POST /api/settings/analytics/event
 POST /api/settings/asr-openai-compat/test
 POST /api/settings/diagnostics/event
 POST /api/settings/engines/{family}/{engine_id}/local-model/discover
@@ -350,7 +348,6 @@ PUT /api/cloud-sync/choices
 PUT /api/cloud-sync/local
 PUT /api/integrations/twilio/config
 PUT /api/mcp/bindings
-PUT /api/settings/analytics
 PUT /api/settings/asr-openai-compat
 PUT /api/settings/compute-device
 PUT /api/settings/cuda-device
