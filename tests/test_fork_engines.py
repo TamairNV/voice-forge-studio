@@ -100,3 +100,25 @@ def test_saved_removed_asr_engine_falls_back_to_default(monkeypatch):
     )
     monkeypatch.delenv("OMNIVOICE_ASR_BACKEND", raising=False)
     assert asr_backend.active_backend_id() == asr_backend._auto_detect()
+
+
+from pathlib import Path
+
+import yaml
+
+_MODELS_YAML = Path(__file__).resolve().parents[1] / "backend" / "config" / "models.yaml"
+
+
+def _catalogue():
+    data = yaml.safe_load(_MODELS_YAML.read_text())
+    return data["models"] if isinstance(data, dict) else data
+
+
+def test_catalogue_engines_all_kept():
+    for entry in _catalogue():
+        assert set(entry.get("engines") or []) <= KEPT_TTS | KEPT_ASR | {"pyannote", "sortformer"}, entry["repo_id"]
+
+
+def test_voxcpm2_is_the_required_model():
+    required = [e["repo_id"] for e in _catalogue() if e.get("required")]
+    assert required == ["openbmb/VoxCPM2"]
