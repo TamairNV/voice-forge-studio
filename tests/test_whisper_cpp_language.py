@@ -54,65 +54,6 @@ def test_reported_language_is_preserved():
     assert parse_transcript({'result': {'language': 'nl'}}, word_timestamps=False)['language'] == 'nl'
 
 
-@pytest.mark.parametrize('language', [None, 'unknown', 'und', ' '])
-def test_batch_stops_before_translation_when_language_unknown(tmp_path, monkeypatch, m, language):
-    from api.routers import batch
-    from services import ffmpeg_utils
-    monkeypatch.setattr(batch, 'DATA_DIR', str(tmp_path))
-    monkeypatch.setattr(ffmpeg_utils, 'find_ffmpeg', lambda: 'ffmpeg')
-    monkeypatch.setattr(ffmpeg_utils, 'validate_media_source', lambda _: None)
-    monkeypatch.setattr(ffmpeg_utils, 'require_audio_stream', lambda _: None)
-    monkeypatch.setattr('subprocess.run', lambda *a, **k: SimpleNamespace(stderr=b'Duration: 00:00:02.00', stdout=b'', returncode=0))
-    result = {'chunks': [{'text': 'Goedemorgen', 'timestamp': (0, 2)}], 'language': language}
-    backend = SimpleNamespace(transcribe=lambda *a, **kw: result, unload=lambda: None)
-    monkeypatch.setattr(m.ab, 'load_active_asr_backend', lambda: backend)
-    async def transcribe(_pool, fn, **_kwargs):
-        return fn()
-    monkeypatch.setattr(m.ab, 'run_transcribe_guarded', transcribe)
-    def no_tts(_):
-        raise AssertionError('Unknown source reached TTS resolution')
-    monkeypatch.setattr(batch, '_batch_voice', no_tts)
-    job = {'video_path': str(tmp_path / 'input.mp4'), 'langs': ['en'], 'status': 'running'}
-    from core.failure import SourceLanguageRequiredError, build_failure, is_terminal_failure_topic
-    with pytest.raises(SourceLanguageRequiredError) as raised:
-        asyncio.run(batch._run_batch_pipeline('unknown-language', job))
-    assert job['source_lang'] is None
-    assert job['segments'][0]['text'] == 'Goedemorgen'
-    # The batch card shows a localized, actionable class, not a hidden raw error.
-    failed = build_failure(raised.value, stage='batch', include_diagnostic=False)
-    assert failed['docs_topic'] == 'SOURCE_LANGUAGE_REQUIRED'
-    assert 'choose its source language' in failed['reason']
-    assert 'source language' in failed['hint']
-    assert is_terminal_failure_topic(failed['docs_topic'])
-
-
-def test_batch_worker_records_actionable_source_language_failure(monkeypatch):
-    from api.routers import batch
-    from core.failure import SourceLanguageRequiredError
-
-    async def pipeline(_job_id, _job):
-        raise SourceLanguageRequiredError()
-
-    monkeypatch.setattr(batch, '_run_batch_pipeline', pipeline)
-    job = {'id': 'no-lang', 'status': 'queued', 'filename': 'a.mp4'}
-
-    async def run():
-        batch._queue = asyncio.Queue()
-        batch._jobs['no-lang'] = job
-        await batch._queue.put('no-lang')
-        worker = asyncio.create_task(batch._worker())
-        await batch._queue.join()
-        worker.cancel()
-
-    try:
-        asyncio.run(run())
-    finally:
-        batch._jobs.pop('no-lang', None)
-        batch._queue = None
-    assert job['status'] == 'failed'
-    assert job['docs_topic'] == 'SOURCE_LANGUAGE_REQUIRED'
-    assert 'Dubbing' in job['error']
-
 @pytest.mark.parametrize('override', [None, 'fr'])
 def test_whole_file_dub_preserves_unknown_or_explicit_source(tmp_path, monkeypatch, m, override):
     import numpy as np

@@ -625,33 +625,6 @@ def test_legacy_dub_uses_the_recording_budget(tmp_path, monkeypatch):
     assert budgets == [pytest.approx(3000, abs=1)]
 
 
-def test_batch_uses_the_extracted_duration(tmp_path, monkeypatch):
-    import subprocess
-    from api.routers import batch
-    from services import asr_backend as asr
-    from services.inference_cancellation import current_cancellation
-    from services.asr_timing import remaining_s
-    monkeypatch.setattr(batch, "DATA_DIR", str(tmp_path))
-    monkeypatch.setattr("services.ffmpeg_utils.find_ffmpeg", lambda: "ffmpeg")
-    monkeypatch.setattr("services.ffmpeg_utils.validate_media_source", lambda path: None)
-    monkeypatch.setattr("services.ffmpeg_utils.require_audio_stream", lambda path: None)
-    monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: SimpleNamespace(
-        returncode=0, stdout=b"", stderr=b"Duration: 00:25:00.00"))
-    job = {"video_path": str(tmp_path / "input.mp4"), "langs": [], "voice_id": None, "status": "running"}
-    budgets = []
-    real = asr.run_transcribe_guarded
-
-    async def guarded(pool, fn, **kwargs):
-        def recognize():
-            budgets.append(remaining_s(current_cancellation().deadline))
-            return [], "en"
-        return await real(pool, recognize, **kwargs)
-
-    monkeypatch.setattr(asr, "run_transcribe_guarded", guarded)
-    asyncio.run(batch._run_batch_pipeline("long-recording", job))
-    assert budgets == [pytest.approx(3000, abs=1)]
-
-
 def test_remote_asr_format_fallback_does_not_renew_the_deadline(tmp_path, monkeypatch):
     from services import asr_backend as asr, asr_timing
     from services.inference_cancellation import InferenceCancellation

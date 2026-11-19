@@ -554,28 +554,6 @@ def test_killed_startup_revokes_without_a_reporting_policy(reporter,monkeypatch,
     assert not restarted.thread.is_alive()
 
 
-@pytest.mark.parametrize('cancelled',[False,True])
-def test_batch_empty_transcript_keeps_cancellation_out_of_diagnostics(reporter,monkeypatch,tmp_path,cancelled):
-    from types import SimpleNamespace
-    from api.routers import batch
-    from services import asr_backend,ffmpeg_utils
-    import subprocess
-    reporter.consent(True)
-    monkeypatch.setattr(batch,'DATA_DIR',str(tmp_path))
-    monkeypatch.setattr(subprocess,'run',lambda *a,**kw:SimpleNamespace(stderr=b'Duration: 00:00:02.00',stdout=b''))
-    monkeypatch.setattr(ffmpeg_utils,'find_ffmpeg',lambda:'ffmpeg')
-    monkeypatch.setattr(ffmpeg_utils,'validate_media_source',lambda *_:None)
-    monkeypatch.setattr(ffmpeg_utils,'require_audio_stream',lambda *_:None)
-    job={'status':'running','video_path':str(tmp_path/'input.mp4'),'langs':['en']}
-    async def transcribe(*a,**kw):
-        if cancelled:job['status']='cancelled'
-        return [],'en'
-    monkeypatch.setattr(asr_backend,'run_transcribe_guarded',transcribe)
-    asyncio.run(batch._run_batch_pipeline('diagnostic-empty',job))
-    assert job['status']==('cancelled' if cancelled else 'failed')
-    assert len(records(reporter))==(0 if cancelled else 1)
-
-
 def test_argos_terminal_error_row_is_reported_without_losing_partial_results(reporter,monkeypatch):
     from test_dub_translate import _install_fake_argos
     from api.routers.dub_translate import dub_translate,TranslateRequest

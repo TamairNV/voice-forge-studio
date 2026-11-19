@@ -144,8 +144,7 @@ def set_performance_profile(body: _PerformanceProfileBody):
     if family is not None and family not in applicable:
         raise HTTPException(status_code=409, detail="The selected engines do not support this performance preset")
     from core import job_store
-    from api.routers.batch import list_batch_jobs
-    if job_store.list_jobs(status="active", limit=1) or list_batch_jobs(status="active", limit=1):
+    if job_store.list_jobs(status="active", limit=1):
         raise HTTPException(status_code=409, detail="Wait for queued or running jobs to finish before changing performance presets")
     try:
         if family is None:

@@ -341,21 +341,6 @@ def test_slot_fit_failure_returns_stable_error(skills, store, monkeypatch, caplo
     assert private not in caplog.text
 
 
-def test_disabled_glossary_extract_503s(skills, store):
-    _activate_groq(store)
-    from fastapi import HTTPException
-    from api.routers import glossary
-
-    skills.configure_skill("glossary_extract", enabled=False)
-    with pytest.raises(HTTPException) as ei:
-        glossary.auto_extract(
-            "proj-1",
-            glossary.AutoExtractRequest(target_lang="de",
-                                        segments=[{"text": "hello"}]),
-        )
-    assert ei.value.status_code == 503
-
-
 def test_refinement_state_reflects_disabled_skill(skills, store):
     _activate_groq(store)
     from api.routers import settings as settings_router

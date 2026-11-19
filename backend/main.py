@@ -792,14 +792,12 @@ def _phase_a_build_inner() -> None:
         dub_export,
         dub_translate,
         projects,
-        glossary,
         engines,
         tools,
         stories,
         setup,
         archetypes,
         describe_voice,
-        batch,
         watermark,
         events,
         capture,
@@ -809,7 +807,6 @@ def _phase_a_build_inner() -> None:
         openai_compat,
         tts_stream,
         personas,
-        sonitranslate,
         audiobook,
         longform_jobs,
         pronunciation,  # Expressive-TTS Spec 01: user pronunciation dictionary
@@ -822,10 +819,10 @@ def _phase_a_build_inner() -> None:
     from api.routers import mcp_bindings as _mcp_bindings_router  # noqa: E402
     _router_modules.extend([
         system, profiles, profile_images, exports, jobs, generation, voice_convert, sfx, dub_core, dub_generate,
-        dub_export, dub_translate, projects, glossary, engines, tools,
+        dub_export, dub_translate, projects, engines, tools,
         stories, setup, archetypes, describe_voice,
-        batch, watermark, events, capture, capture_ws, speech_platform, dictation,
-        openai_compat, tts_stream, personas, sonitranslate,
+        watermark, events, capture, capture_ws, speech_platform, dictation,
+        openai_compat, tts_stream, personas,
         audiobook, longform_jobs, pronunciation, settings_router,
         media_tools_router, auth_router, _mcp_bindings_router,
     ])

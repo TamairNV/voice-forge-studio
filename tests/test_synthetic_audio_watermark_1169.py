@@ -374,48 +374,6 @@ def test_audiobook_preview_route_output_is_watermarked(tmp_path, monkeypatch, ma
     _assert_marked(wav, sr, "POST /audiobook/preview")
 
 
-# ── Batch dub queue (harness from test_text_normalization_routes.py) ─────────
-
-
-def test_batch_dub_track_is_watermarked(tmp_path, monkeypatch, fake_engine, marking_on):
-    import api.routers.batch as b
-    from services.audio_io import load_audio
-
-    monkeypatch.setattr(b, "DATA_DIR", str(tmp_path))
-    monkeypatch.setenv("OMNIVOICE_TTS_BACKEND", "fake-wm-1169")
-
-    async def _fake_run_transcribe_guarded(pool, fn, what=None, **kwargs):
-        return (
-            [{"id": "s0", "start": 0.0, "end": 1.0,
-              "text": "Hello there", "text_original": "Hello there"}],
-            "en",
-        )
-
-    monkeypatch.setattr(
-        "services.asr_backend.run_transcribe_guarded", _fake_run_transcribe_guarded)
-
-    def _fake_subprocess_run(cmd, *a, **kw):
-        class _Result:
-            stdout = b""
-            stderr = b"Duration: 00:00:02.00, start: 0.000000, bitrate: 1000 kb/s\n"
-        return _Result()
-
-    monkeypatch.setattr("subprocess.run", _fake_subprocess_run)
-    monkeypatch.setattr("services.ffmpeg_utils.find_ffmpeg", lambda: "ffmpeg")
-
-    job = {
-        "id": "jobWM", "status": "running", "filename": "in.mp4",
-        "video_path": str(tmp_path / "in.mp4"), "langs": ["en"],
-        "voice_id": None, "preserve_bg": True, "created_at": 0.0,
-        "started_at": None, "finished_at": None, "error": None, "progress": None,
-    }
-    asyncio.run(b._run_batch_pipeline("jobWM", job))
-    assert "en" in job.get("outputs", {})
-
-    wav, sr = load_audio(str(tmp_path / "batch" / "jobWM" / "dubbed_en.wav"))
-    _assert_marked(wav, sr, "batch dubbed track (muxed into the output mp4)")
-
-
 # ── POST /dub/preview-segment/{job_id} ───────────────────────────────────────
 
 

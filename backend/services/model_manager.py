@@ -4583,13 +4583,6 @@ def _generation_jobs_active() -> bool:
             return True
     except Exception:  # noqa: BLE001 — unknown means busy: never offload blind
         return True
-    batch = sys.modules.get("api.routers.batch")
-    lister = getattr(batch, "list_batch_jobs", None)
-    if callable(lister):
-        try:
-            return bool(lister(status="active", limit=1))
-        except Exception:  # noqa: BLE001
-            return True
     return False
 
 

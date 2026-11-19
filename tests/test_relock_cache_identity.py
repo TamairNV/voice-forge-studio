@@ -193,21 +193,3 @@ def test_longform_render_holds_its_take_until_the_render_ends(locked_profile, tm
     assert not voice_leases.in_use(in_flight)
     assert profiles.sweep_retired_voice_files(grace_s=0) == 1
     assert not os.path.exists(in_flight)
-
-
-def test_batch_job_holds_its_voice_only_while_it_runs(tmp_path, monkeypatch):
-    from api.routers import batch
-    from core import voice_leases
-
-    path = str(tmp_path / "take.wav")
-    during = []
-
-    async def leased(job_id, job, lease):
-        lease.hold(path)
-        during.append(voice_leases.in_use(path))
-        raise RuntimeError("pipeline failed")
-
-    monkeypatch.setattr(batch, "_run_batch_pipeline_leased", leased)
-    with pytest.raises(RuntimeError):
-        asyncio.run(batch._run_batch_pipeline("job", {}))
-    assert during == [True] and not voice_leases.in_use(path)

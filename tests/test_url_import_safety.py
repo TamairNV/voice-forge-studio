@@ -155,10 +155,6 @@ def test_profile_batch_and_preview_uploads_share_the_media_policy(name):
         files={"ref_audio": (name, payload, "application/octet-stream")},
     )
     assert profile.status_code == 415
-    batch = client.post(
-        "/batch/enqueue", files={"video": (name, payload, "application/octet-stream")}
-    )
-    assert batch.status_code == 415
     preview = client.post(
         "/preview/upload", files={"video": (name, payload, "application/octet-stream")}
     )
@@ -340,22 +336,6 @@ def test_guarded_ytdlp_subprocess_never_connects_to_a_private_host(tmp_path):
     assert result.returncode != 0
     assert "private network address" in result.stderr
     assert hits == []
-
-
-def test_batch_refuses_a_non_media_upload_before_the_speech_model_check(monkeypatch):
-    """CI has no speech-to-text model; the answer must not depend on that."""
-    import services.asr_backend as asr
-
-    monkeypatch.setattr(
-        asr,
-        "asr_model_missing_error",
-        lambda *a, **k: {"code": "asr_model_missing", "message": "missing"},
-    )
-    response = _client().post(
-        "/batch/enqueue",
-        files={"video": ("evil.conf", b"--exec touch /tmp/x\n", "application/octet-stream")},
-    )
-    assert response.status_code == 415
 
 
 def test_policy_check_sees_private_answers_inside_the_connect_guard(monkeypatch):

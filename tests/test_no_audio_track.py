@@ -227,19 +227,6 @@ def test_clone_profile_refuses_reference_without_audio(video_only, tmp_path, mon
     assert not list(store.iterdir()), "the refused reference must not be kept"
 
 
-@needs_ffmpeg
-def test_batch_extract_reports_no_audio_track(video_only, tmp_path, monkeypatch):
-    from api.routers import batch
-
-    monkeypatch.setattr(batch, "DATA_DIR", str(tmp_path))
-    job = {
-        "video_path": str(video_only), "langs": ["es"], "status": "running",
-        "progress": None,
-    }
-    with _raises_no_audio():
-        asyncio.run(batch._run_batch_pipeline("noaudio", job))
-
-
 class _SilentVideoASR:
     """An engine whose own decoder fails on a video-only file, as PyAV does."""
 
