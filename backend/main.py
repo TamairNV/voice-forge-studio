@@ -797,11 +797,10 @@ def _phase_a_build_inner() -> None:
         media_tools as media_tools_router,  # Audio tools: ffmpeg/ffprobe/yt-dlp
         auth as auth_router,
         voice_convert,  # Studio Convert: speech-to-speech via ASR → TTS
-        sfx,  # Tools > Sound effects (#3577): opt-in MOSS-SoundEffect sidecar
     )
     from api.routers import mcp_bindings as _mcp_bindings_router  # noqa: E402
     _router_modules.extend([
-        system, profiles, profile_images, exports, jobs, generation, voice_convert, sfx,
+        system, profiles, profile_images, exports, jobs, generation, voice_convert,
         projects, engines, tools,
         setup, archetypes, describe_voice,
         watermark, events, capture,
