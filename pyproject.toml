@@ -43,9 +43,6 @@ dependencies = [
     # pydub imports the stdlib `audioop`, which Python 3.13 removed; gradio
     # used to pull this backport in, so declare it now that gradio is in `ui`.
     "audioop-lts ; python_version >= '3.13'",
-    # The SoniTranslate service imports gradio_client directly. It used to
-    # arrive through gradio; gradio itself is only for `omnivoice-demo` (`ui`).
-    "gradio_client",
     # Used by accelerate's tensorboard tracker in omnivoice/training.
     "tensorboardX",
     "numpy",
@@ -96,7 +93,6 @@ dependencies = [
     # unified memory, dictation-grade speed on the GPU. Same platform gate as
     # mlx-whisper/mlx-audio (depends on mlx — no wheels elsewhere).
     "parakeet-mlx>=0.5.2 ; sys_platform == 'darwin' and platform_machine == 'arm64'",
-    "demucs>=4.0.1",
     # >=1.16: alembic.ini relies on path_separator=os (new in 1.16.0), which
     # older alembic silently ignores and then colon-splits C:\ paths /
     # space-splits POSIX paths containing spaces.
@@ -221,7 +217,6 @@ eval = [
 # `omnivoice-demo` (omnivoice/cli/demo.py) is the only gradio importer.
 ui = [
     "gradio>=6.15.1",
-    "gradio_client",
     "requests",
 ]
 # OmniVoice training and data preparation (omnivoice/data, omnivoice/scripts).
