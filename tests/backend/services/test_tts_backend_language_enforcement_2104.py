@@ -248,37 +248,6 @@ def test_generate_batch_multi_engine_never_rejects(_StubBackend):
     assert len(out) == 1
 
 
-# ── Confucius4-specific: the engine that triggered the issue ───────────
-
-
-def test_confucius4_declares_its_real_14_languages_not_multi():
-    """The reporter's defect 4: Confucius4 returns ``["multi"]`` for an
-    engine that supports 14 languages. The new declaration matches
-    upstream's README; the base-class check rejects anything else."""
-    import os as _os, sys as _sys
-    backend_root = _os.path.join(
-        _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
-        "..", "..", "backend",
-    )
-    if backend_root not in _sys.path:
-        _sys.path.insert(0, backend_root)
-    from engines.confucius4 import Confucius4Backend
-
-    langs = Confucius4Backend().supported_languages
-    # The literal contract: 14 distinct ISO codes from upstream README.
-    expected = {
-        "zh", "en", "ja", "ko", "de", "fr", "es", "id", "it",
-        "th", "pt", "ru", "ms", "vi",
-    }
-    assert set(langs) == expected, (
-        f"Confucius4 advertises 14 languages upstream; the engine "
-        f"contract should match. Got: {sorted(langs)}"
-    )
-    assert "multi" not in langs, (
-        "``[\"multi\"]`` lies about a finite-set engine; the base-class "
-        "check is now wired, so the truthful list must be declared."
-    )
-
 def test_batch_validates_all_languages_before_first_generation(_StubBackend):
     backend = _StubBackend(["en"])
     with pytest.raises(ValueError, match="pl"):
@@ -288,16 +257,12 @@ def test_batch_validates_all_languages_before_first_generation(_StubBackend):
 
 @pytest.mark.parametrize("module,class_name", [
     ("services.tts_backend", "VoxCPM2Backend"),
-    ("services.tts_backend", "MossTTSNanoBackend"),
-    ("services.tts_backend", "KittenTTSBackend"),
     ("services.tts_backend", "CosyVoiceBackend"),
     ("services.tts_backend", "GPTSoVITSBackend"),
-    ("engines.confucius4", "Confucius4Backend"),
     ("engines.audiocpp", "AudioCPPBackend"),
     ("engines.indextts", "IndexTTS2Backend"),
     ("engines.voxcpm2_subprocess", "VoxCPM2SubprocessBackend"),
     ("engines.cosyvoice_subprocess", "CosyVoiceSubprocessBackend"),
-    ("engines.moss_tts_nano_subprocess", "MossTTSNanoSubprocessBackend"),
 ])
 def test_direct_generation_rejects_before_loading_or_starting_sidecar(module, class_name):
     from importlib import import_module

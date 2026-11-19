@@ -14,3 +14,5 @@ One line each: `- <path or name>: <why it stays> (Task N)`.
 - backend/core/failure.py, backend/core/url_safety.py: yt-dlp error text and guard helpers kept out of scope for Phase 1 (Task 16)
 - backend/services/sherpa_dictation.py: still imported by kept capture/ASR/performance modules (Task 17)
 - backend/services/dictation_cleanup.py: still imported by kept capture/ASR/performance modules (Task 17)
+- backend/engines/audiocpp/__init__.py (AudioCPPBackend / Breeze code): kept because AudioCPPDotsBackend subclasses it (Task 21)
+- backend/services/performance_*.py, backend/services/engine_disk_usage.py, backend/core/engine_licenses.py, backend/services/model_acceptance.py, backend/core/health_device.py, backend/api/routers/engines.py (lines 49, 73): string mentions of removed TTS engine ids kept as dictionary data (Task 21)

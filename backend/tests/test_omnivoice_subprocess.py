@@ -334,10 +334,6 @@ def test_sidecar_keeps_retrying_a_recognizer_that_errors(monkeypatch, tmp_path):
 # ── registry + isolation ───────────────────────────────────────────────────
 
 
-def test_registry_resolves_to_subprocess_backend():
-    assert get_backend_class("omnivoice-subprocess") is OmniVoiceSubprocessBackend
-
-
 @pytest.mark.parametrize(
     ("family", "expected_name"),
     [("mps", "OmniVoiceMPSSubprocessBackend"), ("cuda", "OmniVoiceBackend"),
@@ -391,22 +387,6 @@ def _catalogue_host(monkeypatch, family, registry):
         "is_available",
         classmethod(lambda cls: (True, "sidecar healthy")),
     )
-
-
-def test_mps_public_inventory_has_one_omnivoice_identity(monkeypatch):
-    registry = {
-        "omnivoice": OmniVoiceBackend,
-        "omnivoice-subprocess": OmniVoiceSubprocessBackend,
-    }
-    _catalogue_host(monkeypatch, "mps", registry)
-
-    public_ids = tuple(item["id"] for item in list_backends())
-    internal_ids = tuple(item["id"] for item in list_backends(include_hidden=True))
-
-    assert public_ids == ("omnivoice",)
-    assert internal_ids == tuple(registry)
-    assert get_backend_class("omnivoice") is OmniVoiceMPSSubprocessBackend
-    assert get_backend_class("omnivoice-subprocess") is OmniVoiceSubprocessBackend
 
 
 def test_active_routing_preserves_hidden_mps_compatibility_id(monkeypatch):
@@ -654,33 +634,23 @@ def test_subprocess_sidecar_initial_empty_crash_reports_pipe_closed(monkeypatch)
 def test_subprocess_engine_timeouts_raised():
     """All large subprocess TTS engines must declare generous timeouts rather
     than inheriting the 60s class default (#2103)."""
-    from engines.confucius4 import Confucius4Backend
     from engines.dots_tts import DotsTTSBackend
     from engines.moss_tts_v15 import MossTTSV15Backend
-    from engines.supertonic3.backend import Supertonic3Backend
 
-    assert Confucius4Backend().recv_timeout_s >= 300.0
     assert DotsTTSBackend().recv_timeout_s >= 300.0
     assert MossTTSV15Backend().recv_timeout_s >= 300.0
-    assert Supertonic3Backend().recv_timeout_s >= 300.0
 
 
 def test_subprocess_engine_timeout_env_overrides(monkeypatch):
     """Subprocess TTS engines honor their engine-specific receive timeout env overrides (#2103)."""
-    from engines.confucius4 import Confucius4Backend
     from engines.dots_tts import DotsTTSBackend
     from engines.moss_tts_v15 import MossTTSV15Backend
-    from engines.supertonic3.backend import Supertonic3Backend
 
-    monkeypatch.setenv("OMNIVOICE_CONFUCIUS4_RECV_TIMEOUT_S", "1200")
     monkeypatch.setenv("OMNIVOICE_DOTS_TTS_RECV_TIMEOUT_S", "1000")
     monkeypatch.setenv("OMNIVOICE_MOSS_TTS_V15_RECV_TIMEOUT_S", "1100")
-    monkeypatch.setenv("OMNIVOICE_SUPERTONIC3_RECV_TIMEOUT_S", "500")
 
-    assert Confucius4Backend().recv_timeout_s == 1200.0
     assert DotsTTSBackend().recv_timeout_s == 1000.0
     assert MossTTSV15Backend().recv_timeout_s == 1100.0
-    assert Supertonic3Backend().recv_timeout_s == 500.0
 
 
 def test_subprocess_asr_recv_timeout_env_override(monkeypatch):

@@ -132,8 +132,8 @@ def test_list_backends_resilient(registry_sandbox, caplog):
 
     # And every production backend still appears.
     expected = {
-        "omnivoice", "cosyvoice", "kittentts", "mlx-audio", "voxcpm2",
-        "moss-tts-nano", "indextts2", "gpt-sovits", "sherpa-onnx",
+        "omnivoice", "cosyvoice", "mlx-audio", "voxcpm2",
+        "indextts2", "gpt-sovits",
     }
     assert expected.issubset(by_id.keys()), (
         f"missing: {expected - by_id.keys()}"
@@ -342,25 +342,24 @@ def test_last_error_cleared_after_recovery(registry_sandbox):
 
 
 def test_existing_engines_still_listed():
-    """Sanity: the wrap must not silently drop entries. We expect all nine
-    in-tree engines unchanged."""
+    """Sanity: the wrap must not silently drop entries."""
     out = list_backends()
     ids = {entry["id"] for entry in out}
     expected = {
-        "omnivoice", "cosyvoice", "kittentts", "mlx-audio", "voxcpm2",
-        "moss-tts-nano", "indextts2", "gpt-sovits", "sherpa-onnx",
+        "omnivoice", "cosyvoice", "mlx-audio", "voxcpm2",
+        "indextts2", "gpt-sovits",
     }
     assert expected.issubset(ids), f"missing entries: {expected - ids}"
-    assert len(out) >= 9
+    assert len(out) >= 6
 
 
 def test_install_hint_preserved():
     """install_hint passthrough — Phase 1's tooltips must still render."""
     out = {entry["id"]: entry for entry in list_backends()}
-    assert "kittentts" in out
+    assert "voxcpm2" in out
     # The pre-existing _INSTALL_HINTS dict carries this one.
-    assert out["kittentts"]["install_hint"] is not None
-    assert "kittentts" in out["kittentts"]["install_hint"].lower()
+    assert out["voxcpm2"]["install_hint"] is not None
+    assert "voxcpm" in out["voxcpm2"]["install_hint"].lower()
 
 
 # ── `hint` — available-but-has-advice (the "ready — <advice>" convention) ──

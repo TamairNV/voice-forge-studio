@@ -191,21 +191,16 @@ def test_speech_rejects_out_of_range_steps(client, monkeypatch):
 
 
 def test_real_ranged_engines_advertise_their_bounds():
-    from engines.supertonic3.backend import Supertonic3Backend
     from services.tts_backend import VoxCPM2Backend
     from engines.voxcpm2_subprocess import VoxCPM2SubprocessBackend
 
-    assert Supertonic3Backend.supports_num_step is True
-    assert Supertonic3Backend.supports_guidance_scale is False
-    assert Supertonic3Backend.num_step_range == (5, 12)
     assert VoxCPM2Backend.num_step_range == (1, 64)
     assert VoxCPM2SubprocessBackend.num_step_range == (1, 64)
 
 
 def test_real_sidecar_backends_advertise_no_knob_support():
     from engines.cosyvoice_subprocess import CosyVoiceSubprocessBackend
-    from engines.moss_tts_nano_subprocess import MossTTSNanoSubprocessBackend
 
-    for cls in (CosyVoiceSubprocessBackend, MossTTSNanoSubprocessBackend):
+    for cls in (CosyVoiceSubprocessBackend,):
         assert cls.supports_num_step is False
         assert cls.supports_guidance_scale is False
