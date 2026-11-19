@@ -16,7 +16,7 @@
 - Keep the Python package name `omnivoice`, the `OMNIVOICE_*` env var prefix and the `omnivoice_data/` layout. Renaming them is churn with no gain.
 - Licence stays AGPL-3.0. Keep `LICENSE` and `LICENSE-NOTICE.md`, and add a modification notice (Task 2).
 - The server binds `127.0.0.1` by default. Never document `0.0.0.0`. Remote access (Phase 5) uses the Tailscale IP plus an API key.
-- Engine registry after this phase is exactly: `omnivoice` (hidden, non-default), `mlx-audio`, `voxcpm2`, `cosyvoice`, `cosyvoice-gguf`, `indextts2`, `dots-tts`, `audiocpp-dots`, `qwen3-tts`, `gpt-sovits`, `pockettts`.
+- Engine registry after this phase is exactly: `omnivoice` (hidden, non-default), `mlx-audio`, `voxcpm2`, `cosyvoice`, `cosyvoice-gguf`, `indextts2`, `dots-tts`, `audiocpp-dots`, `moss-tts-v15`, `qwen3-tts`, `gpt-sovits`, `pockettts`.
 - Default TTS engine: `mlx-audio` with model `mlx-community/VoxCPM2-8bit` on darwin-arm64, and `voxcpm2` elsewhere. `OMNIVOICE_TTS_BACKEND` still overrides it.
 - ASR kept: `mlx-whisper` (large-v3-turbo, tiny), `faster-whisper` (large-v3-turbo, base), `whisperx`, `parakeet-mlx` v3, `nemo-parakeet` v3.
 - Tests run with `HF_HUB_OFFLINE=1`, as upstream CI does, so nothing is downloaded.
@@ -164,7 +164,7 @@ Put the `app_routes` fixture in `tests/conftest.py`. It builds the app the same 
 
 **Files:**
 - Modify: `backend/services/tts_backend.py` (`_LAZY_REGISTRY` around line 4111, `_REGISTRY` around line 4225, `_INSTALL_HINTS`, and the default in the `prefs.resolve("tts_backend", …, default="omnivoice")` call around line 4903), `backend/config/models.yaml`, `backend/config/model_licenses.json`, the ASR backend registry (whichever module lists `whisperx`/`mlx-whisper`).
-- Delete: `backend/engines/{kittentts*,moss_tts_nano_subprocess,supertonic3,confucius4,ming_tts,omnivoice_gguf,omnivoice_subprocess,moss_tts_v15,moss_sfx}`, the in-file backend classes of removed engines (`KittenTTSBackend`, `MossTTSNanoBackend`, `SherpaOnnxBackend`), and their tests and docs in `docs/engines/`.
+- Delete: `backend/engines/{kittentts*,moss_tts_nano_subprocess,supertonic3,confucius4,ming_tts,omnivoice_gguf,omnivoice_subprocess,moss_sfx}`, the in-file backend classes of removed engines (`KittenTTSBackend`, `MossTTSNanoBackend`, `SherpaOnnxBackend`), and their tests and docs in `docs/engines/`.
 - Modify: `backend/engines/audiocpp/` (keep `AudioCPPDotsBackend`, remove the registry key `audiocpp` and its Breeze bundle).
 - Test: `tests/test_fork_engines.py`
 
@@ -176,7 +176,7 @@ Put the `app_routes` fixture in `tests/conftest.py`. It builds the app the same 
 
 ```python
 KEPT_TTS = {"omnivoice", "mlx-audio", "voxcpm2", "cosyvoice", "cosyvoice-gguf", "indextts2",
-            "dots-tts", "audiocpp-dots", "qwen3-tts", "gpt-sovits", "pockettts"}
+            "dots-tts", "audiocpp-dots", "moss-tts-v15", "qwen3-tts", "gpt-sovits", "pockettts"}
 
 def test_registry_is_exactly_kept():
     assert {b["id"] for b in list_backends(include_hidden=True)} == KEPT_TTS
@@ -222,7 +222,7 @@ def test_no_noncommercial_model_is_required():
 
 **Files:**
 - Create: `.github/workflows/ci.yml`, with one job on `ubuntu-latest`: `uv sync`, then `HF_HUB_OFFLINE=1 uv run --no-sync pytest tests/ -q -n 4` and `pytest backend/tests/ -q`.
-- Delete: docs for removed features (`docs/electron-*`, dubbing, dictation, mobile, release, store, ROCm, Intel Mac, analytics and privacy docs that describe removed telemetry, `docs/readme/` translations, `docs/media/electron/`), and engine docs for removed engines.
+- Delete: docs for removed features (`docs/electron-*`, dubbing, dictation, mobile, release, store, ROCm, Intel Mac, analytics and privacy docs that describe removed telemetry, `docs/readme/` translations, `docs/media/electron/`, upstream plans in `docs/superpowers/plans/` other than the `2026-11-19-*` fork plans), and engine docs for removed engines.
 - Modify: `docs/` index or README links, so no link points at a deleted file.
 - Test: `tests/test_fork_docs_links.py`
 
