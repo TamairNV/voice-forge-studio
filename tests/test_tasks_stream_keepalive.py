@@ -3,7 +3,7 @@ import asyncio
 
 import pytest
 
-from api.routers import dub_export as export_router
+from api.routers import jobs as export_router
 
 COMMENT = ": keepalive\n\n"
 
