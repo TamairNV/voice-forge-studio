@@ -14,7 +14,7 @@ def _tts():
 
 
 def test_engines_without_presets_list_none():
-    entries = {e["id"]: e for e in _tts().list_backends()}
+    entries = {e["id"]: e for e in _tts().list_backends(include_hidden=True)}
     assert entries["omnivoice"]["preset_voices"] == []
     assert entries["omnivoice"]["default_voice"] is None
 

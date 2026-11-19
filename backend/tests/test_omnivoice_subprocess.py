@@ -368,7 +368,7 @@ def test_engine_catalogue_reports_effective_mps_isolation(monkeypatch):
         classmethod(lambda cls: (True, "ready")),
     )
 
-    row = next(item for item in list_backends() if item["id"] == "omnivoice")
+    row = next(item for item in list_backends(include_hidden=True) if item["id"] == "omnivoice")
     assert row["isolation_mode"] == "subprocess"
 
 
@@ -403,20 +403,6 @@ def test_active_routing_preserves_hidden_mps_compatibility_id(monkeypatch):
     assert route["engine"] == "omnivoice-subprocess"
     assert (route["available"], route["effective_device"]) == (True, "mps")
     assert (route["routing_status"], route["routing_reason"]) == ("accelerated", None)
-
-
-@pytest.mark.parametrize(
-    "family",
-    [pytest.param("cuda", id="nvidia"), pytest.param("cpu", id="software")],
-)
-def test_non_mps_inventory_does_not_suppress_compatibility_choice(monkeypatch, family):
-    entries = {
-        "omnivoice": OmniVoiceBackend,
-        "omnivoice-subprocess": OmniVoiceSubprocessBackend,
-    }
-    _catalogue_host(monkeypatch, family, entries)
-    visible = {row["id"]: row for row in list_backends()}
-    assert visible.keys() == entries.keys()
 
 
 def test_mps_startup_does_not_preload_native_model(monkeypatch):

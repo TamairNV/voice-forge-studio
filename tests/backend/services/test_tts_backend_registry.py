@@ -132,7 +132,7 @@ def test_list_backends_resilient(registry_sandbox, caplog):
 
     # And every production backend still appears.
     expected = {
-        "omnivoice", "cosyvoice", "mlx-audio", "voxcpm2",
+        "cosyvoice", "mlx-audio", "voxcpm2",
         "indextts2", "gpt-sovits",
     }
     assert expected.issubset(by_id.keys()), (
@@ -282,7 +282,7 @@ def test_isolation_mode_in_process_vs_subprocess(registry_sandbox):
     from core.device_caps import detect_host_caps
     registry_sandbox["fake-sub"] = FakeSubBackend
     registry_sandbox["healthy-inproc"] = HealthyInProcessBackend
-    out = {entry["id"]: entry for entry in list_backends()}
+    out = {entry["id"]: entry for entry in list_backends(include_hidden=True)}
 
     assert out["fake-sub"]["isolation_mode"] == "subprocess"
     assert out["healthy-inproc"]["isolation_mode"] == "in-process"
@@ -346,11 +346,11 @@ def test_existing_engines_still_listed():
     out = list_backends()
     ids = {entry["id"] for entry in out}
     expected = {
-        "omnivoice", "cosyvoice", "mlx-audio", "voxcpm2",
+        "cosyvoice", "mlx-audio", "voxcpm2",
         "indextts2", "gpt-sovits",
     }
     assert expected.issubset(ids), f"missing entries: {expected - ids}"
-    assert len(out) >= 6
+    assert len(out) >= 5
 
 
 def test_install_hint_preserved():
@@ -429,7 +429,7 @@ def test_supports_cloning_true_false_and_model_dependent(registry_sandbox):
 
     registry_sandbox["no-clone"] = NoCloneBackend
     registry_sandbox["healthy-inproc"] = HealthyInProcessBackend
-    out = {e["id"]: e for e in list_backends()}
+    out = {e["id"]: e for e in list_backends(include_hidden=True)}
 
     # Plain bool class attrs pass through…
     assert out["no-clone"]["supports_cloning"] is False

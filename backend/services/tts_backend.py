@@ -22,7 +22,9 @@ import functools
 import inspect
 import logging
 import os
+import platform
 import re
+import sys
 import contextlib
 import threading
 import uuid
@@ -3715,6 +3717,8 @@ _REGISTRY: dict[str, type[TTSBackend]] = _LazyRegistry({
     "gpt-sovits":    GPTSoVITSBackend,
 })
 
+HIDDEN_TTS: frozenset[str] = frozenset({"omnivoice"})
+
 
 # ── ENGINE-06 last-error cache ─────────────────────────────────────────────
 #
@@ -3920,6 +3924,8 @@ def list_backends(*, include_hidden: bool = False) -> list[dict]:
 
     out: list[dict] = []
     for bid, cls in _REGISTRY.items():
+        if not include_hidden and bid in HIDDEN_TTS:
+            continue
         cls = _effective_backend_class(bid, cls, caps.family)
         try:
             ok, msg = cls.is_available()
@@ -4352,11 +4358,23 @@ def gpu_routing_verdict() -> dict:
     }
 
 
+def default_tts_backend_id() -> str:
+    """Platform default TTS engine: mlx-audio on Apple Silicon, voxcpm2 elsewhere."""
+    if sys.platform == "darwin" and platform.machine() == "arm64":
+        return "mlx-audio"
+    return "voxcpm2"
+
+
 def active_backend_id() -> str:
-    # Env var > persisted UI choice > default. Env wins so power-users can
-    # pin a backend without the Settings picker silently undoing it.
+    # Env var > persisted UI choice > platform default. An id that is no longer
+    # registered (an engine removed by the fork) falls back to the default.
     from core import prefs
-    return prefs.resolve("tts_backend", env="OMNIVOICE_TTS_BACKEND", default="omnivoice")
+    default = default_tts_backend_id()
+    chosen = prefs.resolve("tts_backend", env="OMNIVOICE_TTS_BACKEND", default=default)
+    if chosen not in _REGISTRY:
+        logger.warning("Saved TTS engine %r is not available in this build; using %r", chosen, default)
+        return default
+    return chosen
 
 
 # Cached active backend instance + its id (MM2-01). Without this, every call
