@@ -778,7 +778,7 @@ If you don't have an NVIDIA GPU, you don't need the CUDA build at all — a CPU 
 Apple-Silicon install skips this index entirely. Electron source and packaged
 setup select CPU wheels when no NVIDIA driver is detected. Set
 `OMNIVOICE_TORCH_VARIANT=cpu` before `bun run setup:api` or the packaged install
-action to choose them explicitly; see [CPU setup](../../electron/README.md#running-without-a-gpu).
+action to choose them explicitly; see CPU setup.
 An unusable NVIDIA driver is a setup warning for CPU-capable engines;
 GPU-only engines still require supported hardware.
 
@@ -1171,7 +1171,7 @@ mounts it as the `omnivoice_data` volume).
 
 ### Google Colab: the UI loads but every action fails with 403
 
-The [Colab notebook](../../notebooks/OmniVoice_Studio_Colab.ipynb) opens the UI
+The Colab notebook opens the UI
 through Colab's port proxy, on a per-session
 `https://<id>-3900-colab.googleusercontent.com` address. The backend refuses
 browser API calls from host names and origins it does not know (DNS-rebinding
@@ -1228,7 +1228,7 @@ block in the [Linux source-build guide](linux.md#building-from-source).
 This entry covered a corrupted WebView2 profile in the archived Tauri app
 (`IPC custom protocol failed, Tauri will now use the postMessage interface
 instead`, issue #879). The Electron app does not use WebView2. Install Electron
-with the [migration guide](../electron-migration.md); if the Electron app hangs
+with the migration guide; if the Electron app hangs
 at startup, see [14d](#14d-cant-reach-the-local-voicestudio-backend-when-the-backend-never-started).
 
 ## 16. macOS: microphone permission never prompts, VoiceStudio never appears in System Settings
@@ -1331,7 +1331,7 @@ not bundled. Only **Argos** and **NLLB** work out of the box.
   Argos (bundled, offline)** — or copy the command to run it in a from-source
   checkout.
 
-Full guide: [dubbing/translation-engines.md](../dubbing/translation-engines.md#installing-optional-translation-engines-from-source-vs-packaged-build).
+Full guide: dubbing/translation-engines.md.
 
 ## First-run setup fails on a restricted network (GitHub/PyPI blocked)
 

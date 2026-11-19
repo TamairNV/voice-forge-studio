@@ -20,8 +20,8 @@ Repository policy comes from [AGENTS.md](../../AGENTS.md) and
 | --- | --- | --- |
 | Expressive TTS | [Expression and pronunciation](01-expressive-tts.md) | [Expressive speech](../expressive-speech.md) |
 | Conversational agents | [Conversation design](02-conversational-agent.md) | [Agentic voice](../agentic-voice.md) |
-| Longform editing | [Editor design](03-longform-studio-editor.md) · [Retained longform designs](longform/README.md) | [Stories and audiobooks](../electron-longform.md) |
-| Profiles and workspaces | [Profile unification](voice-studio-unification.md) · [Workspace navigation](workspace-connectivity.md) · [Voice console](voice-console-10x.md) | [Projects](../electron-projects.md) |
+| Longform editing | [Editor design](03-longform-studio-editor.md) · [Retained longform designs](longform/README.md) | Stories and audiobooks |
+| Profiles and workspaces | [Profile unification](voice-studio-unification.md) · [Workspace navigation](workspace-connectivity.md) · [Voice console](voice-console-10x.md) | Projects |
 | Dictation | [Flow design](2026-07-16-dictation-flow-program.md) | [Dictation guide](../features/dictation.md) |
 | Remote authentication | [Security design](2026-08-13-remote-admin-session-hardening.md) | [API authentication](../api-auth.md) |
 | License-client proposal | [Candidate client protocol](commercial-license-client.md) | [Checkout release contract](desktop-pro-page.md) |

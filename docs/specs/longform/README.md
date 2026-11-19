@@ -2,12 +2,12 @@
 
 For current behavior, start with these guides:
 
-- [Stories and audiobooks](../../electron-longform.md): scripts, imports, rendering,
+- Stories and audiobooks: scripts, imports, rendering,
   mastering, exports, cue sheets and recovery.
-- [Projects](../../electron-projects.md): named projects, library and deletion.
-- [Gallery](../../electron-gallery.md) and [persona format](../../persona-format.md):
+- Projects: named projects, library and deletion.
+- Gallery and [persona format](../../persona-format.md):
   voice selection, handoffs and portable voice files.
-- [Calls](../../calls.md): workflows and opt-in telephony.
+- Calls: workflows and opt-in telephony.
 
 The old generated task checklists targeted the removed `frontend/src` tree and
 have been retired. This does not declare every proposed feature complete.

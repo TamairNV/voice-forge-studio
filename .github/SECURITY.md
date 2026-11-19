@@ -5,7 +5,7 @@
 | Version | Supported |
 |---------|-----------|
 | Latest 0.5.x release (and `main`) | ✅ All fixes, including security fixes, land here |
-| Older releases, including final Tauri builds (≤ 0.5.3) | ❌ No backports — upgrade ([Tauri migration guide](../docs/electron-migration.md)) |
+| Older releases, including final Tauri builds (≤ 0.5.3) | ❌ No backports — upgrade (Tauri migration guide) |
 
 ## Model supply chain
 
@@ -58,7 +58,7 @@ VoiceStudio runs **100% locally** by default. The primary attack surface is:
 
 ## Automated scanning
 
-Every pull request and push to `main` runs [`.github/workflows/security.yml`](workflows/security.yml):
+Every pull request and push to `main` runs `.github/workflows/security.yml`:
 
 - **gitleaks** — secret scanning (fails CI on a leaked credential)
 - **CodeQL** — Python + JavaScript/TypeScript static analysis → Security tab
@@ -91,7 +91,7 @@ public script, use `make virustotal FILE=/path/to/file` instead. Local edits and
 untracked files are not included in the default archive.
 
 For a remote scan, set the repository Actions secret `VIRUSTOTAL_API_KEY` and
-manually dispatch [the VirusTotal workflow](workflows/virustotal.yml):
+manually dispatch the VirusTotal workflow:
 
 ```bash
 gh workflow run virustotal.yml --repo debpalash/VoiceStudio --ref main

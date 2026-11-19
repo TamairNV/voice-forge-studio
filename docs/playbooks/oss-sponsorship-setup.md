@@ -68,8 +68,8 @@ default the contact to the GitHub issue form.
 
 ### 2. README `## Sponsors` subsection
 
-A short pitch, a logo-slot placeholder (`**Your logo here** — [become a
-sponsor](SPONSORS.md)`), and a link to `SPONSORS.md`. Wrap the logo area in
+A short pitch, a logo-slot placeholder (`**Your logo here** — become a
+sponsor`), and a link to `SPONSORS.md`. Wrap the logo area in
 `<!-- SPONSORS:START -->` / `<!-- SPONSORS:END -->` markers so a future script
 can auto-render logos from the config. Add a `Sponsors` entry to the top nav.
 

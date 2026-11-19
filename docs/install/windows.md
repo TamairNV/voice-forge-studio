@@ -2,7 +2,7 @@
 
 VoiceStudio's Windows desktop app is built with Electron. The archived Tauri
 app (MSI installers) is no longer maintained; if you still run it, follow the
-[migration guide](../electron-migration.md).
+migration guide.
 
 ## Requirements
 
@@ -102,7 +102,7 @@ Supertonic-3, PocketTTS) and a small Whisper model in the Model Catalogue; the
 setup screen lists them as its CPU preset. Set `OMNIVOICE_TORCH_VARIANT=cuda`
 (or `cpu`) before launching to override the detection.
 Source setup (`bun run setup:api`) also selects locked CPU wheels when NVIDIA
-is absent. See [CPU setup and overrides](../../electron/README.md#running-without-a-gpu).
+is absent. See CPU setup and overrides.
 
 ### Windows on ARM (Snapdragon X etc.)
 
@@ -228,7 +228,7 @@ bun run dev         # Electron with hot reload; it starts and supervises the bac
 
 Use `bun run desktop-prod` to build and launch the production bundle, or
 `bun run dist` to create a local NSIS installer in `electron/release/` without
-publishing. See [Electron setup](../../electron/README.md) for backend
+publishing. See Electron setup for backend
 configuration.
 
 ## HF_TOKEN persistence

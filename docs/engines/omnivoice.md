@@ -14,7 +14,7 @@ and dictation all run on it out of the box.
 - You just installed VoiceStudio — it's already selected.
 
 For low-VRAM or CPU-only machines, the
-[OmniVoice GGUF](omnivoice-gguf.md) variant runs the same model through a
+OmniVoice GGUF variant runs the same model through a
 quantized native binary with a much smaller memory footprint.
 
 ## Requirements
@@ -130,7 +130,7 @@ The env var overrides the persisted UI choice.
   try [VoxCPM2](voxcpm2.md).
 - Below the 6 GB VRAM floor on a CUDA or ROCm card, expect very slow renders;
   they get the longer CPU compute-time budget rather than the accelerated one,
-  but can still time out. Prefer [OmniVoice GGUF](omnivoice-gguf.md) or a CPU
+  but can still time out. Prefer OmniVoice GGUF or a CPU
   engine such as [PocketTTS](pockettts.md).
 
 ## Troubleshooting

@@ -2,7 +2,7 @@
 
 VoiceStudio's macOS desktop app is built with Electron. The archived Tauri app
 is no longer maintained; if you still run it, follow the
-[migration guide](../electron-migration.md).
+migration guide.
 
 > [!IMPORTANT]
 > **Intel Macs are not supported** for the local backend (app UI only).
@@ -162,7 +162,7 @@ Anyway"**. You confirm once per install; later launches work by double-click.
 The maintained Electron release workflow uses a Developer ID Application
 certificate (`ELECTRON_MACOS_CSC_LINK` and `ELECTRON_MACOS_CSC_KEY_PASSWORD`)
 plus `APPLE_API_KEY`, `APPLE_API_KEY_ID` and `APPLE_API_ISSUER` for
-notarization with an App Store Connect team API key. See [the release guide](../RELEASING.md#credentials)
+notarization with an App Store Connect team API key. See the release guide
 for all platform credentials and verification gates. An Apple Developer
 membership is required; the archived Tauri workflow's `APPLE_CERTIFICATE`
 secrets do not sign Electron installers.
@@ -204,7 +204,7 @@ bun run dev         # Electron with hot reload; it starts and supervises the bac
 Use `bun run desktop-prod` to build and launch the production bundle, or
 `bun run dist` to create local DMG/zip packages in `electron/release/` without
 publishing. Local packages are unsigned. See
-[Electron setup](../../electron/README.md) for backend configuration.
+Electron setup for backend configuration.
 
 ## Apple Silicon vs Intel
 

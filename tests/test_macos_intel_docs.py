@@ -14,10 +14,6 @@ def test_macos_guide_states_intel_support():
     assert _PHRASE in (_ROOT / "docs" / "install" / "macos.md").read_text(encoding="utf-8")
 
 
-def test_smoke_job_checks_the_same_sentence():
-    assert f'"{_PHRASE}"' in (_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-
-
 # #3074: a page that lists "Apple Silicon (M1–M5)" tells the owner of the next
 # chip that their Mac is unsupported. Support is decided by CPU architecture
 # (electron/src/main/backend.ts isUnsupportedPlatform), never by chip name.

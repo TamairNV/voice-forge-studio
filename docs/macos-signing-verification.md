@@ -2,7 +2,7 @@
 
 How to verify the Electron macOS app's signature, notarization, and Gatekeeper
 acceptance. Credentials and the release procedure live in
-[RELEASING.md](RELEASING.md#credentials); end-user Gatekeeper help lives in
+RELEASING.md; end-user Gatekeeper help lives in
 [install/macos.md](install/macos.md#gatekeeper-quarantine).
 
 ## How releases are signed

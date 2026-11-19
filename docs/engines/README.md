@@ -31,21 +31,21 @@ approval), [Windows](../install/windows.md), [Linux](../install/linux.md),
 |---|---|---|---|---|
 | VoiceStudio (OmniVoice) — **default** | [omnivoice](omnivoice.md) | CUDA · MPS · CPU | ✅ | installed by default |
 | VoxCPM2 | [voxcpm2](voxcpm2.md) | CUDA · MPS · CPU | ✅ + voice design | `pip install "voxcpm>=2.0.3"` |
-| MOSS-TTS-Nano | [moss-tts-nano](moss-tts-nano.md) | CUDA · CPU | ✅ (ref only) | clone + `uv pip install -e .` |
-| KittenTTS | [kittentts](kittentts.md) | CPU | — (8 preset voices) | `pip install kittentts` |
+| MOSS-TTS-Nano | moss-tts-nano | CUDA · CPU | ✅ (ref only) | clone + `uv pip install -e .` |
+| KittenTTS | kittentts | CPU | — (8 preset voices) | `pip install kittentts` |
 | MLX-Audio (Kokoro, CSM, Dia, …) | [mlx-audio](mlx-audio.md) | Apple Silicon | model-dependent | `pip install mlx-audio` |
 | CosyVoice 3 | [cosyvoice](cosyvoice.md) | CUDA · CPU | ✅ | clone + requirements |
 | GPT-SoVITS | [gpt-sovits](gpt-sovits.md) | external server | ✅ | its own API server |
-| Sherpa-ONNX | [sherpa-onnx](sherpa-onnx.md) | CUDA · CPU | — | `pip install sherpa-onnx` + model dir |
+| Sherpa-ONNX | sherpa-onnx | CUDA · CPU | — | `pip install sherpa-onnx` + model dir |
 | IndexTTS 2.5 | [indextts](indextts.md) | CUDA · CPU | ✅ + emotion | one-click sidecar install |
-| OmniVoice GGUF | [omnivoice-gguf](omnivoice-gguf.md) | CUDA · MPS · CPU | ✅ | native binary bundled in the desktop installers (not Intel Mac) |
-| Supertonic-3 | [supertonic3](supertonic3.md) | CPU | — (7 preset voices) | `uv sync --extra supertonic` + license |
+| OmniVoice GGUF | omnivoice-gguf | CUDA · MPS · CPU | ✅ | native binary bundled in the desktop installers (not Intel Mac) |
+| Supertonic-3 | supertonic3 | CPU | — (7 preset voices) | `uv sync --extra supertonic` + license |
 | MOSS-TTS-v1.5 (8B) | [moss-tts-v15](moss-tts-v15.md) | CUDA · CPU | ✅ | clone + env var |
 | dots.tts (2B) | [dots-tts](dots-tts.md) | CUDA · CPU (not Windows; use audio.cpp dots.tts) | ✅ | clone + env var |
 | OmniVoice (subprocess) | [omnivoice-subprocess](omnivoice-subprocess.md) | CUDA · MPS · CPU | ✅ | opt-in off MPS; automatic through default OmniVoice on MPS |
 | PocketTTS (Kyutai) | [pockettts](pockettts.md) | CPU (not Intel Mac) | ✅ | `uv sync --extra pockettts` + license |
-| Confucius4-TTS | [confucius4-tts](confucius4-tts.md) | CUDA · CPU | ✅ | clone + env var |
-| Ming-3.0-tts (0.5B) | [ming-tts](ming-tts.md) | NVIDIA CUDA only | ✅ | one-click install (Linux) or clone + env var |
+| Confucius4-TTS | confucius4-tts | CUDA · CPU | ✅ | clone + env var |
+| Ming-3.0-tts (0.5B) | ming-tts | NVIDIA CUDA only | ✅ | one-click install (Linux) or clone + env var |
 | audio.cpp (Breeze-TTS-2) | [audio-cpp](audio-cpp.md) | CPU + Vulkan/Metal/CUDA/HIP/ROCm where compiled | ✅ + voice design | prebuilt binary + env var (weights research/non-commercial) |
 | audio.cpp (dots.tts SOAR) | [audio-cpp](audio-cpp.md#dotstts) | CPU + Vulkan/Metal/CUDA/HIP/ROCm where compiled, incl. Windows | ✅ | runtime + weights from Model Catalogue (Apache-2.0) |
 | CosyVoice 3 GGUF | [cosyvoice-gguf](cosyvoice-gguf.md) | CPU + Vulkan (native runtime build) | ✅ reference cloning + instruct | user-built native runtime + model catalogue |
@@ -55,7 +55,7 @@ approval), [Windows](../install/windows.md), [Linux](../install/linux.md),
 
 | Engine | Guide | Runs on | Enabled by |
 |---|---|---|---|
-| MOSS-SoundEffect v2.0 | [moss-soundeffect](moss-soundeffect.md) | CUDA (NVIDIA) only | Install button on Tools → Sound effects (desktop and web only; Apache-2.0) |
+| MOSS-SoundEffect v2.0 | moss-soundeffect | CUDA (NVIDIA) only | Install button on Tools → Sound effects (desktop and web only; Apache-2.0) |
 
 ### Reference clip length
 
@@ -91,7 +91,7 @@ an engine runs in its own environment.
 | Parakeet TDT (MLX) | [parakeet-mlx](parakeet-mlx.md) | Apple Silicon | dictation, 25 EU languages | default on mac-ARM source installs |
 | Moonshine | [moonshine](moonshine.md) | CPU | edge/low-power, no timestamps | `pip install` (see guide) |
 | FunASR (SenseVoice) | [funasr](funasr.md) | CUDA · CPU | 50+ languages, inline diarization | `pip install funasr` |
-| Sherpa-ONNX dictation | [sherpa-onnx-asr](sherpa-onnx-asr.md) | CPU | live streaming dictation | curated model download |
+| Sherpa-ONNX dictation | sherpa-onnx-asr | CPU | live streaming dictation | curated model download |
 | OpenAI-compatible (local or remote) | [openai-compatible-asr](openai-compatible-asr.md) | network | a configured endpoint; loopback stays local | Model Catalogue |
 
 Speaker diarization is not an engine registry of its own — the dub pipeline

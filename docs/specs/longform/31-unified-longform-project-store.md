@@ -2,7 +2,7 @@
 
 > **Historical design reference.** Paths, status and instructions below describe
 > the original implementation snapshot. For current behavior see the
-> [projects guide](../../electron-projects.md); follow current repository rules for new changes.
+> projects guide; follow current repository rules for new changes.
 
 ## TL;DR
 

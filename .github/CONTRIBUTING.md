@@ -15,7 +15,7 @@ Thanks for your interest in improving VoiceStudio! This guide covers everything 
 
 > **Before your first pull request: sign the CLA first.** Unless exempt under the
 > [CLA checker’s policy](#contribution-licensing), sign the
-> [Contributor License Agreement](CLA-1.0.md) once. It takes a minute: post the
+> Contributor License Agreement once. It takes a minute: post the
 > line in [Contribution licensing](#contribution-licensing) on the
 > [signing issue (#2586)](https://github.com/debpalash/VoiceStudio/issues/2586), and
 > your signature covers your future contributions. A pull request opened before
@@ -27,7 +27,7 @@ Thanks for your interest in improving VoiceStudio! This guide covers everything 
 > must also sign before the check passes.
 >
 > **Using an AI coding agent?** Give it the
-> [agent pull-request guide](AGENT_PR_GUIDE.md) first.
+> agent pull-request guide first.
 
 ---
 
@@ -73,16 +73,16 @@ bun run dev
 
 This installs the source dependencies (skipping local API setup for an external
 backend or Intel Mac) and launches Electron with hot reload. The supervisor
-manages backend startup; do not launch a second backend. See [Electron
-setup](../electron/README.md).
+manages backend startup; do not launch a second backend. See Electron
+setup.
 
 For screenshots, use the maintained Electron capture script described in
-[README media](../docs/media/electron/README.md). To share a runnable app, use
+README media. To share a runnable app, use
 the release installers or `bun run dist`; source users should clone the
 repository with its lockfiles and follow the setup commands above.
 
 CPU-only Linux/Windows hosts automatically select CPU wheels; see
-[CPU setup and overrides](../electron/README.md#running-without-a-gpu).
+CPU setup and overrides.
 When regenerating `uv.lock` for compute variants, preserve unrelated package
 versions: NumPy remains 2.0.2 on Python 3.12 Linux/Windows and 2.2.6 elsewhere.
 Validate both frozen CPU/CUDA exports with `tests/test_cpu_install.py`; a NumPy
@@ -176,7 +176,7 @@ project dependencies afterwards.
 
 Tauri is sunset after v0.5.3 and receives no further development or backports.
 Use Electron for desktop contributions and reproduce desktop bugs there.
-Existing users should follow the [migration guide](../docs/electron-migration.md).
+Existing users should follow the migration guide.
 The Tauri shell and its legacy UI entry points have been removed. Shared
 modules and native helpers used by Electron remain maintained.
 
@@ -763,8 +763,8 @@ test-only PR. Docker Hub overview edits still publish through the small
 VoiceStudio is **AGPL-3.0-only**, and the maintainer also offers a
 **commercial license** (see [LICENSE-NOTICE.md](../LICENSE-NOTICE.md)). Before
 a pull request can merge, every non-exempt human contributor — the opener,
-commit authors and co-authors — signs the [Contributor License Agreement](CLA-1.0.md)
-once. The [checker](scripts/cla_check.py) exempts its configured maintainer and
+commit authors and co-authors — signs the Contributor License Agreement
+once. The checker exempts its configured maintainer and
 bot account IDs. You keep
 your copyright. The agreement lets Yupcha Softwares Private Limited, the
 company that maintains VoiceStudio, ship your work in both the AGPL-3.0 app and
@@ -815,7 +815,7 @@ account, either add that commit email to your account (Settings → Emails), or
 rewrite the commits with an email that is on it (`git commit --amend
 --reset-author`, or an interactive rebase) and push again. Comment `recheck` to
 run the check without pushing. Contributing as part of your job? Your employer
-signs the [Corporate CLA](CCLA-1.0.md) first, and you still sign the CLA
+signs the Corporate CLA first, and you still sign the CLA
 yourself. Adding a `Signed-off-by:` line (DCO) is appreciated but does not
 replace the CLA.
 

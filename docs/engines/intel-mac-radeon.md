@@ -38,7 +38,7 @@ review of its pinned GGML dependency. The experimental recipe is proposed in
 They should be reviewed there before
 VoiceStudio changes its source pin or Intel build defaults.
 
-VoiceStudio already has an [OmniVoice GGUF engine](omnivoice-gguf.md).
+VoiceStudio already has an OmniVoice GGUF engine.
 Integration should extend that engine rather than add an engine named after
 one user's GPU or bake in device-memory numbers. A production contribution
 also needs:
@@ -63,7 +63,7 @@ is not bundled with VoiceStudio. Binding to loopback alone is insufficient:
 any future resident service integration must authenticate every request and
 must not expose registered reference voices to unrelated browser origins.
 
-The existing [resident mode](omnivoice-gguf.md#resident-server)
+The existing resident mode
 remains separate from this experimental path. Do not enable a public listener
 or advertise the Mac GPU as available in the Docker backend based only on the
 host inventory.
