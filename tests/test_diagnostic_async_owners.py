@@ -42,25 +42,19 @@ def test_grant_observation_uses_cached_authority_without_worker_io(reporter, mon
     assert reports.observe_grant() is None
 
 
-@pytest.mark.parametrize("owner", ["sherpa_load", "transcription", "tts"])
+@pytest.mark.parametrize("owner", ["tts"])
 @pytest.mark.parametrize("choice", ["unchanged", "replacement", "later_opt_in"])
 def test_stream_failure_keeps_the_pre_await_grant(reporter, monkeypatch, owner, choice):
-    capture_ws = importlib.import_module("api.routers.capture_ws")
     tts_stream = importlib.import_module("api.routers.tts_stream")
-    from services import asr_backend, sherpa_dictation
     from starlette.websockets import WebSocketDisconnect
     reporter.consent(choice != "later_opt_in")
 
     async def scenario():
         entered = asyncio.Event()
         release = asyncio.Event()
-        thread_release = threading.Event()
-        loop = asyncio.get_running_loop()
         frames = []
 
         class Socket:
-            query_params = {"sr": "16000"}
-            url = SimpleNamespace(path="/ws/transcribe")
             calls = 0
             async def accept(self):
                 pass
@@ -68,9 +62,6 @@ def test_stream_failure_keeps_the_pre_await_grant(reporter, monkeypatch, owner, 
                 pass
             async def send_json(self, value):
                 frames.append(value)
-            async def receive(self):
-                self.calls += 1
-                return {"type": "websocket.receive", **({"bytes": b"\0" * 20_000} if self.calls == 1 else {"text": "EOF"})}
             async def receive_json(self):
                 self.calls += 1
                 if self.calls > 1:
@@ -85,24 +76,9 @@ def test_stream_failure_keeps_the_pre_await_grant(reporter, monkeypatch, owner, 
         async def allow(*args):
             return True
 
-        if owner == "sherpa_load":
-            def load():
-                loop.call_soon_threadsafe(entered.set)
-                assert thread_release.wait(5)
-                raise RuntimeError("private awaited failure")
-            monkeypatch.setattr(sherpa_dictation, "is_installed", lambda *_: True)
-            work = capture_ws._sherpa_load_with_status(Socket(), SimpleNamespace(ensure_loaded=load), SimpleNamespace(id="stub"))
-        elif owner == "transcription":
-            monkeypatch.setattr(capture_ws, "require_ws_access", allow)
-            monkeypatch.setattr(capture_ws, "_select_sherpa_spec", lambda *_: None)
-            monkeypatch.setattr(capture_ws, "_dictation_licence_error", lambda *_: None)
-            monkeypatch.setattr(asr_backend, "asr_model_missing_error", lambda **_: None)
-            monkeypatch.setattr(capture_ws, "_transcribe_buffer_full", failure)
-            work = capture_ws.ws_transcribe(Socket())
-        else:
-            monkeypatch.setattr(tts_stream, "require_ws_access", allow)
-            monkeypatch.setattr(tts_stream, "_resolve_stream_backend", failure)
-            work = tts_stream.ws_tts(Socket())
+        monkeypatch.setattr(tts_stream, "require_ws_access", allow)
+        monkeypatch.setattr(tts_stream, "_resolve_stream_backend", failure)
+        work = tts_stream.ws_tts(Socket())
         task = asyncio.create_task(work)
         try:
             await asyncio.wait_for(entered.wait(), 5)
@@ -112,12 +88,10 @@ def test_stream_failure_keeps_the_pre_await_grant(reporter, monkeypatch, owner, 
             elif choice == "later_opt_in":
                 reporter.consent(True)
             release.set()
-            thread_release.set()
             await asyncio.wait_for(task, 5)
             assert any(frame.get("type") == "error" for frame in frames)
         finally:
             release.set()
-            thread_release.set()
             if not task.done():
                 task.cancel()
                 await asyncio.gather(task, return_exceptions=True)

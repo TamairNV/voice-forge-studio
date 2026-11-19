@@ -229,23 +229,3 @@ def test_explicit_language_beats_all_caps_english_guess():
 def test_spoken_commands_skip_known_non_english_text():
     assert _p("le deux colon", "fr", spoken=True) == "Le deux colon."
     assert _p("hello comma world", None, spoken=True) == "Hello, world."
-
-
-def test_platform_stream_polisher_keeps_plain_polish():
-    from api.routers import capture_ws as cw
-
-    platform = cw._PlatformWebSocket.__new__(cw._PlatformWebSocket)
-    polish = cw._final_polisher(platform, "en")
-    assert polish("um hello comma world", "en") == "Um hello comma world."
-
-
-def test_recovery_language_unknown_does_not_inherit_english_hint():
-    # Silent-model recovery: an English sherpa model failed and the fallback
-    # recognizer (Parakeet) reports no language. Its Portuguese/German text
-    # must not be cleaned with English-only filler rules (#3432 review).
-    from api.routers import capture_ws as cw
-
-    polish = cw._final_polisher(object(), "en")
-    assert polish("um I think so") == "I think so."
-    assert polish("um carro azul", None) == "Um carro azul."
-    assert polish("er ist hier", None) == "Er ist hier."

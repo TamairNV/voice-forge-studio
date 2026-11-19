@@ -167,10 +167,8 @@ async def transcribe_audio(
         apply_hint = _truthy(dictation) and requested_mode != "reference"
 
         def _hint_kwargs(backend) -> dict:
-            if not apply_hint:
-                return {}
-            from api.routers.dictation import dictation_transcribe_kwargs
-            return dictation_transcribe_kwargs(backend)
+            # Dictation hints came from the removed dictation router.
+            return {}
 
         def _run():
             if reference_fallback:

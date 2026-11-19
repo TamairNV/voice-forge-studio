@@ -12,3 +12,5 @@ One line each: `- <path or name>: <why it stays> (Task N)`.
 - gallery tables in SQLite: stay in the database to avoid a schema migration (Task 10)
 - backend/services/dub_qc.py: services/pronunciation.py imports _NO_SPACE_SCRIPT from it (Task 15)
 - backend/core/failure.py, backend/core/url_safety.py: yt-dlp error text and guard helpers kept out of scope for Phase 1 (Task 16)
+- backend/services/sherpa_dictation.py: still imported by kept capture/ASR/performance modules (Task 17)
+- backend/services/dictation_cleanup.py: still imported by kept capture/ASR/performance modules (Task 17)
