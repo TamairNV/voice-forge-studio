@@ -16,3 +16,4 @@ One line each: `- <path or name>: <why it stays> (Task N)`.
 - backend/services/dictation_cleanup.py: still imported by kept capture/ASR/performance modules (Task 17)
 - backend/engines/audiocpp/__init__.py (AudioCPPBackend / Breeze code): kept because AudioCPPDotsBackend subclasses it (Task 21)
 - backend/services/performance_*.py, backend/services/engine_disk_usage.py, backend/core/engine_licenses.py, backend/services/model_acceptance.py, backend/core/health_device.py, backend/api/routers/engines.py (lines 49, 73): string mentions of removed TTS engine ids kept as dictionary data (Task 21)
+- backend/services/asr_backend.py (PyTorchWhisperBackend, WhisperCppBackend, MoonshineASRBackend, FunASRBackend, SherpaDictationBackend, OpenAICompatASRBackend): classes kept because capture.py, sherpa_dictation and performance modules still reference them (Task 24)

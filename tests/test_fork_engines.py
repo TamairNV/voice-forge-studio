@@ -81,3 +81,22 @@ def test_mlx_audio_defaults_to_voxcpm2():
         assert key not in MLXAudioBackend.CURATED_MODELS
         assert key not in MLXAudioBackend.CURATED_MODEL_LANGUAGES
         assert key not in _MLX_AUDIO_MODEL_LABELS
+
+
+def test_asr_registry_is_exactly_kept():
+    from services import asr_backend
+    assert set(asr_backend._REGISTRY) == KEPT_ASR
+
+
+def test_saved_removed_asr_engine_falls_back_to_default(monkeypatch):
+    from core import prefs
+    from services import asr_backend
+
+    real_get = prefs.get
+    monkeypatch.setattr(
+        prefs,
+        "get",
+        lambda key, default=None: "moonshine" if key == "asr_backend" else real_get(key, default),
+    )
+    monkeypatch.delenv("OMNIVOICE_ASR_BACKEND", raising=False)
+    assert asr_backend.active_backend_id() == asr_backend._auto_detect()

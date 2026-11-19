@@ -105,8 +105,3 @@ def test_timestamps_requested_iff_speaker_model_active():
         assert ("output_timestamp" in kw) is want
         if want:
             assert kw["output_timestamp"] is True
-
-
-def test_registered_in_picker():
-    ids = [b["id"] for b in list_backends()]
-    assert "funasr" in ids

@@ -2947,7 +2947,6 @@ class _LazyASRRegistry(dict):
 
     _LAZY = {
         "faster-whisper-isolated": _isolated_faster_whisper,
-        "whisper-cpp": _whisper_cpp,
     }
 
     def __contains__(self, key):
@@ -2986,13 +2985,8 @@ _REGISTRY: dict[str, type[ASRBackend]] = _LazyASRRegistry({
     "whisperx":        WhisperXBackend,
     "faster-whisper":  FasterWhisperBackend,
     "mlx-whisper":     MLXWhisperBackend,
-    "pytorch-whisper": PyTorchWhisperBackend,
     "nemo-parakeet":   NeMoASRBackend,
     "parakeet-mlx":    ParakeetMLXBackend,
-    "moonshine":       MoonshineASRBackend,
-    "funasr":          FunASRBackend,
-    "sherpa-onnx-asr": SherpaDictationBackend,
-    "openai-compat-asr": OpenAICompatASRBackend,
     # "faster-whisper-isolated": resolved lazily (crash-isolated subprocess).
 })
 
@@ -3003,8 +2997,6 @@ _INSTALL_HINTS: dict[str, str] = {
     "whisperx":        "pip install whisperx  (CTranslate2 + wav2vec2 alignment; CUDA or CPU)",
     "faster-whisper":  "pip install faster-whisper  (CTranslate2; cross-platform, CUDA or CPU)",
     "mlx-whisper":     "pip install mlx-whisper  (Apple Silicon only)",
-    "pytorch-whisper": "Bundled with transformers — no extra install (CUDA/MPS/CPU)",
-    "whisper-cpp":     "Place whisper-cli in backend/engines/whisper_cpp/bin/ (Vulkan/CUDA/CPU)",
     "nemo-parakeet":   (
         "No safe install path in this app yet — nemo_toolkit's ASR extras pin "
         "transformers>=4.57,<4.58, which conflicts with VoiceStudio's own "
@@ -3019,16 +3011,6 @@ _INSTALL_HINTS: dict[str, str] = {
         "uv add parakeet-mlx  (Apple Silicon only — installed by default on "
         "mac-ARM source installs since 0.3.22. Parakeet TDT v3 on the GPU via "
         "MLX: 25 European languages, word timestamps, ~2 GB unified memory.)"
-    ),
-    "moonshine":       "uv pip install moonshine-onnx  (or moonshine-voice; edge/CPU-optimized ASR)",
-    "funasr":          "pip install funasr  (SenseVoiceSmall + FSMN-VAD; CUDA or CPU)",
-    "sherpa-onnx-asr": "uv add sherpa-onnx  (ONNX live dictation; CPU, cross-platform)",
-    "openai-compat-asr": (
-        "No install needed — configure a server endpoint in "
-        "Settings → Models → ASR. Points VoiceStudio at any OpenAI-compatible "
-        "server (a self-hosted Qwen3-ASR/FunASR/SenseVoice server, OpenAI's "
-        "own Whisper API, or similar) — a path to Qwen3-ASR today, without "
-        "waiting on a direct transformers integration."
     ),
     "faster-whisper-isolated": (
         "No extra install (reuses faster-whisper). Escape hatch for hanging "
@@ -3310,7 +3292,12 @@ def active_backend_id() -> str:
     from core import prefs
     picked = prefs.get("asr_backend")
     if picked:
-        return picked
+        if picked in _REGISTRY:
+            return picked
+        logger.warning(
+            "Saved ASR engine %r is not available in this build; using auto-detected default",
+            picked,
+        )
     return _auto_detect()
 
 

@@ -147,7 +147,7 @@ def test_get_active_tts_backend_reconstructs_on_mlx_model_switch(monkeypatch, tm
 def test_asr_registry_lists_backends():
     rows = asr_backend.list_backends()
     ids = {r["id"] for r in rows}
-    assert {"mlx-whisper", "pytorch-whisper"}.issubset(ids)
+    assert {"mlx-whisper", "faster-whisper", "whisperx"}.issubset(ids)
     required = {
         "actual_execution_provider",
         "actual_execution_device",
@@ -161,13 +161,13 @@ def test_asr_registry_lists_backends():
 def test_asr_auto_detects():
     bid = asr_backend.active_backend_id()
     # WhisperX is now the default cross-platform pick (better wav2vec2 word
-    # alignment for lip-sync); mlx / pytorch / faster-whisper are fallbacks.
+    # alignment for lip-sync); mlx / faster-whisper are fallbacks.
     assert bid in {"whisperx", "faster-whisper", "mlx-whisper", "pytorch-whisper"}
 
 
 def test_asr_env_override(monkeypatch):
-    monkeypatch.setenv("OMNIVOICE_ASR_BACKEND", "pytorch-whisper")
-    assert asr_backend.active_backend_id() == "pytorch-whisper"
+    monkeypatch.setenv("OMNIVOICE_ASR_BACKEND", "faster-whisper")
+    assert asr_backend.active_backend_id() == "faster-whisper"
 
 
 # ── ASR selection resolution (Model Catalogue ASR picker) ────────────────
@@ -180,11 +180,11 @@ def test_asr_active_backend_prefs_fallback(monkeypatch, tmp_path):
     from core import prefs as _prefs
     monkeypatch.setattr(_prefs, "_PREFS_PATH", str(tmp_path / "prefs.json"))
     monkeypatch.delenv("OMNIVOICE_ASR_BACKEND", raising=False)
-    _prefs.set_("asr_backend", "moonshine")
-    assert asr_backend.active_backend_id() == "moonshine"
+    _prefs.set_("asr_backend", "faster-whisper")
+    assert asr_backend.active_backend_id() == "faster-whisper"
     # Env var must beat prefs.
-    monkeypatch.setenv("OMNIVOICE_ASR_BACKEND", "pytorch-whisper")
-    assert asr_backend.active_backend_id() == "pytorch-whisper"
+    monkeypatch.setenv("OMNIVOICE_ASR_BACKEND", "whisperx")
+    assert asr_backend.active_backend_id() == "whisperx"
 
 
 def test_asr_auto_detects_when_no_env_no_prefs(monkeypatch, tmp_path):
@@ -203,12 +203,12 @@ def test_get_active_asr_backend_follows_prefs_switch_without_restart(monkeypatch
     from core import prefs as _prefs
     monkeypatch.setattr(_prefs, "_PREFS_PATH", str(tmp_path / "prefs.json"))
     monkeypatch.delenv("OMNIVOICE_ASR_BACKEND", raising=False)
-    _prefs.set_("asr_backend", "pytorch-whisper")
+    _prefs.set_("asr_backend", "whisperx")
     assert isinstance(
-        asr_backend.get_active_asr_backend(), asr_backend.PyTorchWhisperBackend)
-    _prefs.set_("asr_backend", "moonshine")
+        asr_backend.get_active_asr_backend(), asr_backend.WhisperXBackend)
+    _prefs.set_("asr_backend", "faster-whisper")
     assert isinstance(
-        asr_backend.get_active_asr_backend(), asr_backend.MoonshineASRBackend)
+        asr_backend.get_active_asr_backend(), asr_backend.FasterWhisperBackend)
 
 
 def test_asr_unknown_backend_raises(monkeypatch):
