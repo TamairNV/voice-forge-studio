@@ -128,14 +128,13 @@ def test_failed_or_interrupted_stream_keeps_partial_trace(rt, monkeypatch, mode)
 
 
 @pytest.mark.parametrize('count', [100, 400])
-@pytest.mark.parametrize('surface', ['generate', 'audiobook'])
+@pytest.mark.parametrize('surface', ['generate'])
 def test_longform_stage_and_copy_budgets(rt, monkeypatch, count, surface):
     """Real orchestration + joins, fake engine: no hardware-sensitive timing gates."""
     import torch
     from services import chunked_tts
-    from services.audiobook import Span, synthesize_chapter
     from api.routers.generation import _run_backend_inference
-    # Each unit emits 40 samples; growing-cat would move O(N²) samples.
+    # Each unit emits 40 samples; growing-cat would move O(N^2) samples.
     real_cat = torch.cat
     copied = 0
     def cat(tensors, *args, **kwargs):
@@ -151,18 +150,13 @@ def test_longform_stage_and_copy_budgets(rt, monkeypatch, count, surface):
             return torch.ones(1, 40)
     trace = rt.RenderTrace(surface)
     with trace.activate():
-        if surface == 'generate':
-            result = _run_backend_inference(
-                Engine(), 'private script', None, None, None, None, None,
-                1, 2, 1, False, False, None, 'raw', crossfade_ms=0,
-            )
-        else:
-            result, _ = synthesize_chapter([Span(text='private script', voice_id=None)],
-                lambda *args: torch.ones(1, 40), 1000, crossfade_ms=0)
+        result = _run_backend_inference(
+            Engine(), 'private script', None, None, None, None, None,
+            1, 2, 1, False, False, None, 'raw', crossfade_ms=0,
+        )
     assert result.shape[-1] == count * 40
     assert copied <= count * 40 * 2
     stats = trace.snapshot()['stages']
     assert stats['synthesis']['calls'] == count
     assert stats['join']['calls'] == 1
-    if surface == 'generate':
-        assert stats['effects']['calls'] == 1
+    assert stats['effects']['calls'] == 1

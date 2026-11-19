@@ -370,10 +370,10 @@ def test_startup_cache_snapshot_hands_off_only_plan_inputs(tmp_path):
 
 
 def test_segment_reservation_includes_legacy_and_varied_repeats(tmp_path):
-    from services.audiobook import Span
+    from types import SimpleNamespace
     from services.longform_render import SegmentCache
 
-    span = Span(voice_id=None, text="Repeated.")
+    span = SimpleNamespace(voice_id=None, text="Repeated.", speed=None, pause_ms_after=0)
     options = dict(sample_rate=24000, engine_id="stub", voice_sig={"": "current"},
                    legacy_voice_sigs=[{"": "old"}], vary_repeats=True)
     paths = SegmentCache(str(tmp_path), **options)

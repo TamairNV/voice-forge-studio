@@ -783,7 +783,6 @@ def _phase_a_build_inner() -> None:
         projects,
         engines,
         tools,
-        stories,
         setup,
         archetypes,
         describe_voice,
@@ -793,8 +792,6 @@ def _phase_a_build_inner() -> None:
         openai_compat,
         tts_stream,
         personas,
-        audiobook,
-        longform_jobs,
         pronunciation,  # Expressive-TTS Spec 01: user pronunciation dictionary
         settings as settings_router,  # Phase 1 AUTH-03: HF token save/clear/state
         media_tools as media_tools_router,  # Audio tools: ffmpeg/ffprobe/yt-dlp
@@ -806,10 +803,10 @@ def _phase_a_build_inner() -> None:
     _router_modules.extend([
         system, profiles, profile_images, exports, jobs, generation, voice_convert, sfx,
         projects, engines, tools,
-        stories, setup, archetypes, describe_voice,
+        setup, archetypes, describe_voice,
         watermark, events, capture,
         openai_compat, tts_stream, personas,
-        audiobook, longform_jobs, pronunciation, settings_router,
+        pronunciation, settings_router,
         media_tools_router, auth_router, _mcp_bindings_router,
     ])
     # Download-acceleration state, once, for triage-from-logs (FDL-03).

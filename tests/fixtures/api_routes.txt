@@ -8,7 +8,6 @@ DELETE /engines/sidecar/{engine_id}/install
 DELETE /export/history/{export_id}
 DELETE /history
 DELETE /history/{history_id}
-DELETE /longform/jobs/{job_id}
 DELETE /models/licenses/receipts/{plan_digest}
 DELETE /models/{repo_id:path}
 DELETE /profiles/{profile_id}
@@ -53,7 +52,6 @@ GET /audio/{audio_id}.mp3
 GET /audio/{audio_id}.ogg
 GET /audio/{audio_id}.opus
 GET /audio/{audio_id}/quality
-GET /audiobook/jobs
 GET /docs
 GET /engines
 GET /engines/asr
@@ -74,7 +72,6 @@ GET /history
 GET /jobs
 GET /jobs/{job_id}
 GET /jobs/{job_id}/events
-GET /longform/jobs
 GET /media-tools/status
 GET /model/loaded
 GET /model/status
@@ -141,12 +138,6 @@ POST /api/settings/storage/temp/clear
 POST /api/sfx/generate
 POST /archetypes/previews/check
 POST /archetypes/{archetype_id}/use
-POST /audiobook
-POST /audiobook/cover
-POST /audiobook/import
-POST /audiobook/plan
-POST /audiobook/preview
-POST /audiobook/resume/{job_id}
 POST /clean-audio
 POST /convert
 POST /design/describe
@@ -162,7 +153,6 @@ POST /export
 POST /export/record
 POST /export/reveal
 POST /generate
-POST /longform/render
 POST /media-tools/acquire
 POST /media-tools/{tool}/custom-path
 POST /media-tools/{tool}/restore
@@ -188,7 +178,6 @@ POST /pronunciation
 POST /pronunciation/import
 POST /pronunciation/test
 POST /setup/warmup
-POST /stories/encode
 POST /system/crash/ack
 POST /system/diagnostic-bundle
 POST /system/flush-memory

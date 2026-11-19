@@ -23,3 +23,4 @@ services.cloud_sync.voices
 services.cloud_sync.vsb1
 services.gpu_sandbox
 services.subtitle_segmenter
+services.loudness
