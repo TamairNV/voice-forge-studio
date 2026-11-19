@@ -3483,6 +3483,8 @@ _LAZY_REGISTRY: dict[str, tuple[str, str]] = {
     "audiocpp-dots": ("engines.audiocpp", "AudioCPPDotsBackend"),
     # Community CosyVoice.cpp GGUF server, explicitly installed and isolated.
     "cosyvoice-gguf": ("engines.cosyvoice_gguf", "CosyVoiceGGUFBackend"),
+    # Voice Forge Phase 2: Maya-1 3.3B MLX (inline acting tags).
+    "maya1": ("services.maya1_backend", "Maya1Backend"),
 }
 
 

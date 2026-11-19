@@ -281,6 +281,14 @@ models:
     note: "Apple Silicon only — via mlx-audio backend."
     platforms: [darwin-arm64]
 
+  - repo_id: "nhe-ai/maya1-mlx-8Bit"
+    label: "Maya-1 3.3B 8-bit (inline acting tags, MLX)"
+    role: TTS
+    engines: [maya1]
+    size_gb: 3.6
+    note: "Apple Silicon only — expressive character acting with inline tags (<laugh>, <sigh>, etc.)."
+    platforms: [darwin-arm64]
+
   # ── Sound effects (not speech) ────────────────────────────────────────
 
   # Role SFX is non-speech: no TTS/ASR picker lists it, and /models hides it.

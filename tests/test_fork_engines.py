@@ -1,5 +1,6 @@
 KEPT_TTS = {"omnivoice", "mlx-audio", "voxcpm2", "cosyvoice", "cosyvoice-gguf", "indextts2",
-            "dots-tts", "audiocpp-dots", "moss-tts-v15", "qwen3-tts", "gpt-sovits", "pockettts"}
+            "dots-tts", "audiocpp-dots", "moss-tts-v15", "qwen3-tts", "gpt-sovits", "pockettts",
+            "maya1"}
 KEPT_ASR = {"mlx-whisper", "faster-whisper", "faster-whisper-isolated", "whisperx",
             "parakeet-mlx", "nemo-parakeet"}
 
