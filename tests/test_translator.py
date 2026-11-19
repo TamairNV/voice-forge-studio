@@ -411,18 +411,12 @@ _JA_SUPPLEMENTARY = "\U00020b9fる。人々"                        # rare Han +
 
 @pytest.mark.parametrize("text", [_JA_KANJI_MAJORITY, _JA_ALL_KANJI, _JA_SUPPLEMENTARY])
 def test_japanese_han_letters_count_as_target_script(text):
-    from api.routers.dub_translate import _looks_like_target
-
     assert tr._looks_like_target_script(text, "ja")
-    assert _looks_like_target(text, "ja")
 
 
 @pytest.mark.parametrize("text", ["This is English.", "Это русский.", "هذا عربي"])
 def test_japanese_gate_still_rejects_other_scripts(text):
-    from api.routers.dub_translate import _looks_like_target
-
     assert not tr._looks_like_target_script(text, "ja")
-    assert not _looks_like_target(text, "ja")
 
 
 # Chinese sentence: "We go to the store today to buy things, then cook at home."
@@ -432,30 +426,21 @@ _JA_NAME = "\u6771\u4eac"
 
 
 def test_japanese_gate_rejects_chinese_output():
-    from api.routers.dub_translate import _looks_like_target
-
     assert tr.script_ratio(_ZH_SENTENCE, "ja") == 0.0
     assert not tr._looks_like_target_script(_ZH_SENTENCE, "ja")
-    assert not _looks_like_target(_ZH_SENTENCE, "ja")
     assert tr.script_ratio(_ZH_SENTENCE, "zh") == 1.0
 
 
 @pytest.mark.parametrize("text", [_JA_SENTENCE, _JA_NAME, _JA_ALL_KANJI])
 def test_japanese_gate_accepts_kana_and_short_kanji(text):
-    from api.routers.dub_translate import _looks_like_target
-
     assert tr.script_ratio(text, "ja") == 1.0
-    assert _looks_like_target(text, "ja")
 
 
 def test_hindi_and_chinese_gates_unchanged_by_shared_ranges():
-    from api.routers.dub_translate import LANG_REQUIRED_SCRIPT, _script_ratio
-
-    assert _script_ratio("नमस्ते दोस्त.", "hi") == 1.0
-    assert _script_ratio("Hello friend", "hi") == 0.0
-    assert _script_ratio(_JA_ALL_KANJI, "zh") == 1.0
-    assert _script_ratio("Hello", "es") == 1.0
-    assert LANG_REQUIRED_SCRIPT["ja"][0] == "JAPANESE"
+    assert tr.script_ratio("नमस्ते दोस्त.", "hi") == 1.0
+    assert tr.script_ratio("Hello friend", "hi") == 0.0
+    assert tr.script_ratio(_JA_ALL_KANJI, "zh") == 1.0
+    assert tr.script_ratio("Hello", "es") == 1.0
 
 
 def test_cinematic_accepts_kanji_majority_japanese(monkeypatch):

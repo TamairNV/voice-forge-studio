@@ -41,13 +41,3 @@ def test_portable_filename_truncates_by_bytes_and_keeps_extension():
     assert len(name.encode("utf-8")) <= 200
     assert name.endswith(".mp4") and "�" not in name
 
-
-def test_download_names_derived_from_titles_are_never_raw():
-    """A job's filename is the video title; every route that turns it into a
-    download name must go through portable_filename (or an alnum allowlist)."""
-    offenders = []
-    for rel in ("api/routers/dub_export.py", "api/routers/batch.py"):
-        text = (BACKEND / rel).read_text(encoding="utf-8")
-        for match in re.finditer(r'^\s*(?:dl_)?filename\s*=\s*f"[^"\n]*\{[^}]*(?:base_name|filename)[^}]*\}[^\n]*$|^\s*dl_name\s*=\s*f"[^\n]*\{base_name\}[^\n]*$', text, re.M):
-            offenders.append(f"{rel}: {match.group(0).strip()}")
-    assert not offenders, offenders

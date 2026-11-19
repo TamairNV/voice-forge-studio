@@ -67,7 +67,7 @@ def test_engines_that_ignore_instruct_cannot_design():
     tts = _tts()
     from engines.pockettts import PocketTTSBackend
 
-    for cls in (tts.KittenTTSBackend, tts.SherpaOnnxBackend, PocketTTSBackend):
+    for cls in (PocketTTSBackend,):
         assert tts.voice_design_support(cls) is False, cls.__name__
 
 

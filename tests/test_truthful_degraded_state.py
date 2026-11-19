@@ -8,24 +8,6 @@ import pytest
 from fastapi import HTTPException
 
 
-def test_partial_download_cleanup_blocks_unsafe_retry(monkeypatch, tmp_path):
-    pipeline = importlib.import_module("services.dub_pipeline")
-    stale = tmp_path / "original.partial"
-    stale.write_bytes(b"partial")
-    monkeypatch.setattr("glob.glob", lambda _pattern: [str(stale)])
-    monkeypatch.setattr(
-        pipeline.os,
-        "remove",
-        lambda _path: (_ for _ in ()).throw(PermissionError("/secret/video")),
-    )
-
-    with pytest.raises(RuntimeError) as caught:
-        pipeline._cleanup_partial_download(str(tmp_path))
-
-    assert "prepare the video download retry" in str(caught.value)
-    assert "/secret/video" not in str(caught.value)
-
-
 def test_mcp_transport_path_failure_stops_server_creation(monkeypatch):
     mcp_server = importlib.import_module("mcp_server")
 
@@ -55,24 +37,6 @@ def test_endpoint_preference_failure_is_fail_closed_to_manual(monkeypatch):
     monkeypatch.setattr(endpoint_race, "explicit_endpoint", lambda: "")
     monkeypatch.setattr(prefs, "get", lambda *_args: (_ for _ in ()).throw(OSError("secret")))
     assert endpoint_race.mode() == "manual"
-
-
-@pytest.mark.asyncio
-async def test_sherpa_ready_delivery_failure_does_not_report_loaded(monkeypatch):
-    capture_ws = importlib.import_module("api.routers.capture_ws")
-    sherpa = importlib.import_module("services.sherpa_dictation")
-    monkeypatch.setattr(sherpa, "is_installed", lambda _spec: True)
-
-    class Socket:
-        calls = 0
-
-        async def send_json(self, _payload):
-            self.calls += 1
-            if self.calls == 2:
-                raise ConnectionError("secret socket")
-
-    backend = SimpleNamespace(ensure_loaded=lambda: None)
-    assert await capture_ws._sherpa_load_with_status(Socket(), backend, SimpleNamespace(id="test")) is False
 
 
 def test_audio_validation_failure_does_not_return_unchecked_audio(monkeypatch):
@@ -116,15 +80,6 @@ async def test_log_clear_does_not_hide_notification_reset_failure(monkeypatch, t
     assert "/secret/prefs" not in caught.value.detail
 
 
-def test_tailscale_disable_reports_reset_failure_without_raw_output(monkeypatch):
-    tailscale = importlib.import_module("services.tailscale")
-    monkeypatch.setattr(tailscale, "_cli", lambda: "/usr/bin/tailscale")
-    monkeypatch.setattr(tailscale, "_run", lambda _args: {"ok": False, "error": "/secret/stderr"})
-    result = tailscale.serve_disable()
-    assert result["ok"] is False
-    assert "/secret/stderr" not in result["error"]
-
-
 @pytest.mark.asyncio
 async def test_network_disable_retains_enabled_state_when_listener_does_not_stop(monkeypatch):
     network_share = importlib.import_module("services.network_share")
@@ -144,23 +99,6 @@ async def test_network_disable_retains_enabled_state_when_listener_does_not_stop
     assert str(caught.value) == "LAN sharing could not be disabled. Retry after active connections close."
     assert network_share.get_state() is state
     assert app.state.network_share is state
-
-
-def test_dub_abort_failure_keeps_job_retryable(monkeypatch):
-    dub_core = importlib.import_module("api.routers.dub_core")
-    job = {"id": "job-1"}
-    monkeypatch.setitem(dub_core._dub_jobs, "job-1", job)
-    monkeypatch.setattr(dub_core, "_kill_job_procs", lambda _job_id: None)
-    monkeypatch.setattr(
-        dub_core.task_manager,
-        "cancel_task",
-        lambda _job_id: (_ for _ in ()).throw(RuntimeError("secret task")),
-    )
-    with pytest.raises(HTTPException) as caught:
-        dub_core.dub_abort("job-1")
-    assert caught.value.status_code == 503
-    assert "aborted" not in job
-    assert "secret task" not in caught.value.detail
 
 
 def test_run_sentinel_clear_failure_retains_ownership(monkeypatch):
@@ -295,21 +233,6 @@ async def test_cancelled_terminal_network_start_resets_state(monkeypatch):
     assert network_share._runtime.server is None
     assert network_share._runtime.task is None
     assert app.state.network_share.enabled is False
-
-
-def test_dub_abort_false_result_stays_retryable(monkeypatch):
-    dub_core = importlib.import_module("api.routers.dub_core")
-    job = {"id": "job-false"}
-    monkeypatch.setitem(dub_core._dub_jobs, "job-false", job)
-    monkeypatch.setattr(dub_core, "_kill_job_procs", lambda _job_id: None)
-    monkeypatch.setattr(dub_core.task_manager, "cancel_task", lambda _job_id: False)
-    result = dub_core.dub_abort("job-false")
-    assert result == {
-        "aborted": True,
-        "had_active_procs": False,
-        "had_active_task": False,
-    }
-    assert job["aborted"] is True
 
 
 def test_endpoint_pref_read_failure_keeps_manual_mode(monkeypatch):

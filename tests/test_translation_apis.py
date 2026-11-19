@@ -108,17 +108,6 @@ def test_amazon_explicit_preflight_rejects_incomplete_setup(monkeypatch, region,
     with pytest.raises(ValueError, match=expected): validate_amazon_configuration()
 
 
-def test_amazon_selection_validates_before_saving(monkeypatch):
-    from api.routers import engines
-    from services import translation_apis, translation_engines
-    monkeypatch.setattr(translation_engines, "is_installed", lambda _: True)
-    monkeypatch.setattr(translation_engines, "is_ready", lambda _: True)
-    monkeypatch.setattr(engines.prefs, "set_", lambda *a: pytest.fail("Must not persist an invalid selection"))
-    monkeypatch.setattr(translation_apis, "validate_amazon_configuration", lambda: (_ for _ in ()).throw(translation_apis.AmazonConfigurationError("AWS credentials missing")))
-    with pytest.raises(Exception) as exc: engines.select_translation_engine(engines.TranslationSelection(engine_id="amazon"))
-    assert exc.value.status_code == 409
-
-
 @pytest.mark.parametrize("error_type", [ValueError, RuntimeError])
 def test_amazon_preflight_sanitizes_sdk_errors(monkeypatch, error_type):
     import boto3

@@ -44,10 +44,8 @@ def test_unconfigured_engine_inherits_generate_budget():
 
 
 @pytest.mark.parametrize("module,cls", [
-    ("engines.confucius4", "Confucius4Backend"),
     ("engines.dots_tts", "DotsTTSBackend"),
     ("engines.moss_tts_v15", "MossTTSV15Backend"),
-    ("engines.supertonic3.backend", "Supertonic3Backend"),
 ])
 def test_engines_that_used_the_ping_budget_now_exceed_it(module, cls):
     engine = getattr(importlib.import_module(module), cls)()
@@ -55,8 +53,8 @@ def test_engines_that_used_the_ping_budget_now_exceed_it(module, cls):
 
 
 def test_every_sidecar_engine_covers_the_gpu_job_budget():
-    for mod in ("engines.confucius4", "engines.dots_tts", "engines.moss_tts_v15",
-                "engines.supertonic3.backend", "engines.omnivoice_subprocess"):
+    for mod in ("engines.dots_tts", "engines.moss_tts_v15",
+                "engines.omnivoice_subprocess"):
         importlib.import_module(mod)
     pending, found = list(SubprocessBackend.__subclasses__()), set()
     while pending:

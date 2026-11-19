@@ -110,7 +110,7 @@ _MODELS_YAML = Path(__file__).resolve().parents[1] / "backend" / "config" / "mod
 
 
 def _catalogue():
-    data = yaml.safe_load(_MODELS_YAML.read_text())
+    data = yaml.safe_load(_MODELS_YAML.read_text(encoding="utf-8"))
     return data["models"] if isinstance(data, dict) else data
 
 

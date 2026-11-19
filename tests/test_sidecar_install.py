@@ -993,7 +993,7 @@ def test_list_backends_flags_indextts2_one_click():
     from services import tts_backend
     row = next(r for r in tts_backend.list_backends() if r["id"] == "indextts2")
     assert row["one_click_install"] is True
-    other = next(r for r in tts_backend.list_backends() if r["id"] == "omnivoice")
+    other = next(r for r in tts_backend.list_backends(include_hidden=True) if r["id"] == "omnivoice")
     assert other["one_click_install"] is False
 
 

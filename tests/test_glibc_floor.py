@@ -41,16 +41,6 @@ def test_default_ceiling_is_the_snap_base():
     assert guard.DEFAULT_MAX == "2.35"
 
 
-def test_linux_packaging_builds_on_jammy_and_runs_the_guard():
-    # ubuntu-22.04 ships glibc 2.35, the same as the Snap base core22.
-    release = (ROOT / ".github" / "workflows" / "electron-release.yml").read_text(encoding="utf-8")
-    snap = (ROOT / ".github" / "workflows" / "snap-store.yml").read_text(encoding="utf-8")
-    assert "- runner: ubuntu-22.04\n            platform: linux" in release
-    assert "runs-on: ubuntu-22.04" in snap.split("package:")[1].split("upload:")[0]
-    for text in (release, snap):
-        assert "scripts/check_glibc_floor.py" in text
-
-
 def test_check_fails_when_objdump_cannot_inspect_an_elf(tmp_path, monkeypatch):
     elf = tmp_path / "helper"
     elf.write_bytes(b"\x7fELF" + b"\0" * 8)

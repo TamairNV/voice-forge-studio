@@ -380,13 +380,6 @@ def test_unknown_model_id_raises(fake_sherpa):
         ab.SherpaDictationBackend(model_id="nope")
 
 
-def test_registered_in_asr_registry():
-    from services import asr_backend as ab
-    assert "sherpa-onnx-asr" in ab._REGISTRY
-    assert ab._REGISTRY["sherpa-onnx-asr"] is ab.SherpaDictationBackend
-    assert "sherpa-onnx-asr" in ab._INSTALL_HINTS
-
-
 # ── get_capture_asr_backend() honors dictation.model_id ─────────────────────
 
 

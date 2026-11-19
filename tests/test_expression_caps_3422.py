@@ -47,7 +47,7 @@ def test_catalogue_reports_each_engines_mechanism():
         "tags": ["[breath]", "[laughter]"],
     }
     assert entries["voxcpm2"]["expression_caps"] == {"emotion": "direction", "tags": []}
-    assert entries["kittentts"]["expression_caps"] == {"emotion": "none", "tags": []}
+    assert entries["pockettts"]["expression_caps"] == {"emotion": "none", "tags": []}
 
 
 def test_every_entry_has_a_well_formed_capability():

@@ -280,6 +280,6 @@ def test_cpu_preset_includes_the_light_whisper():
 
     models = yaml.safe_load((REPO / "backend/config/models.yaml").read_text("utf-8"))["models"]
     by_id = {m["repo_id"]: m for m in models}
-    assert "cpu" in by_id["Systran/faster-whisper-small"]["curated_on"]
-    # ...and it fits a small laptop: well under the heavyweight picks.
-    assert by_id["Systran/faster-whisper-small"]["size_gb"] < 1
+    assert "cpu" in by_id["deepdml/faster-whisper-large-v3-turbo-ct2"]["curated_on"]
+    # ...and a lightweight Whisper fits a small laptop well under 1 GB.
+    assert by_id["Systran/faster-whisper-base"]["size_gb"] < 1

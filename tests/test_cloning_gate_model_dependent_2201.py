@@ -41,8 +41,10 @@ def test_mlx_guidance_identifies_current_and_compatible_models(backend_module, n
 
 
 def test_engine_level_limitation_keeps_generic_advice(backend_module):
-    kitten = backend_module.KittenTTSBackend.__new__(backend_module.KittenTTSBackend)
-    explanation = backend_module.cloning_unavailable_detail("kittentts", kitten, "narration")
+    from types import SimpleNamespace
+
+    stub = SimpleNamespace(supports_cloning=False)
+    explanation = backend_module.cloning_unavailable_detail("no-clone", stub, "narration")
     assert "doesn't support voice cloning" in explanation
     assert backend_module._MLX_AUDIO_MODEL_LABELS["csm"] not in explanation
 

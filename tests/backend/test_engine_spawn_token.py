@@ -267,30 +267,6 @@ def test_subprocess_env_unchanged_when_no_token(monkeypatch, tmp_path):
     assert "YOUR_HF_TOKEN" not in env
 
 
-def test_sonitranslate_module_uses_resolver(monkeypatch, tmp_path):
-    """Source-level check: the SoniTranslate module's subprocess.Popen
-    launcher block contains the canonical resolver import. This guards
-    against future refactors silently reverting the AUTH-04 wiring."""
-    import inspect
-    from huggingface_hub import constants
-    monkeypatch.setattr(constants, "HF_TOKEN_PATH", str(tmp_path / "hf-token"))
-    monkeypatch.setattr(constants, "HF_STORED_TOKENS_PATH", str(tmp_path / "stored_tokens"))
-    monkeypatch.setenv("HF_TOKEN_PATH", str(tmp_path / "hf-token"))
-    monkeypatch.setenv("OMNIVOICE_DATA_DIR", str(tmp_path))
-    for mod in list(sys.modules):
-        if (
-            mod == "core" or mod.startswith("core.")
-            or mod == "services" or mod.startswith("services.")
-        ):
-            del sys.modules[mod]
-    from services import sonitranslate
-    src = inspect.getsource(sonitranslate)
-    # The launcher must read from the resolver, not from os.environ.
-    assert "token_resolver.resolve" in src
-    # And the env injection assigns HF_TOKEN explicitly.
-    assert 'env["HF_TOKEN"]' in src or "env['HF_TOKEN']" in src
-
-
 @pytest.mark.parametrize("endpoint", ["/system/hf-token/state", "/api/settings/hf-token/state"])
 def test_token_state_reads_never_contact_hugging_face(fresh_app, monkeypatch, endpoint):
     import huggingface_hub

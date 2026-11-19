@@ -65,17 +65,6 @@ def test_finite_engine_inventory_lists_the_varieties_it_accepts():
     assert "judeo-moroccan arabic" not in options
 
 
-def test_sidecar_receives_the_declared_code_not_the_variety_name(monkeypatch):
-    from engines.moss_tts_nano_subprocess import MossTTSNanoSubprocessBackend
-
-    sent = []
-    backend = object.__new__(MossTTSNanoSubprocessBackend)
-    monkeypatch.setattr(backend, "_exchange", lambda msg, **_kw: sent.append(msg), raising=False)
-    backend.generate("marhaban", language="Standard Arabic")
-    backend.generate("hello", language="Auto")
-    assert [msg["language"] for msg in sent] == ["ar", "Auto"]
-
-
 def test_indextts_speaks_a_variety_as_its_declared_arabic(monkeypatch):
     from services.subprocess_backend import SubprocessBackend
     from engines.indextts import IndexTTS2Backend

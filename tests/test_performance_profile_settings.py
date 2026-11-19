@@ -9,8 +9,7 @@ import importlib
 
 @pytest.fixture(autouse=True)
 def current_modules():
-    global batch, settings, job_store, prefs
-    batch = importlib.import_module("api.routers.batch")
+    global settings, job_store, prefs
     settings = importlib.import_module("api.routers.settings")
     job_store = importlib.import_module("core.job_store")
     prefs = importlib.import_module("core.prefs")
@@ -24,7 +23,6 @@ def empty_profile(monkeypatch, tmp_path):
         "applicable_families": [],
     })
     monkeypatch.setattr(job_store, "list_jobs", lambda **_kwargs: [])
-    monkeypatch.setattr(batch, "list_batch_jobs", lambda **_kwargs: [])
     activate = Mock(return_value={})
     monkeypatch.setattr(settings, "activate_performance_tier", activate)
     return activate
@@ -54,10 +52,9 @@ def test_auto_is_global_only(empty_profile):
     empty_profile.assert_not_called()
 
 
-@pytest.mark.parametrize("source", ["generation", "batch"])
+@pytest.mark.parametrize("source", ["generation"])
 def test_global_pack_policy_still_blocks_active_jobs(empty_profile, monkeypatch, source):
-    module, name = (job_store, "list_jobs") if source == "generation" else (batch, "list_batch_jobs")
-    monkeypatch.setattr(module, name, lambda **_kwargs: [{"status": "running"}])
+    monkeypatch.setattr(job_store, "list_jobs", lambda **_kwargs: [{"status": "running"}])
     with pytest.raises(HTTPException) as error:
         settings.set_performance_profile(settings._PerformanceProfileBody(tier="fast"))
     assert error.value.status_code == 409

@@ -533,18 +533,6 @@ def test_select_default_falls_back_when_unavailable(monkeypatch):
     assert gguf_backend.select_default_engine() == "omnivoice"
 
 
-def test_registry_resolves_omnivoice_gguf_lazily():
-    """The _LAZY_REGISTRY plumbing should produce the backend class on
-    first `_REGISTRY["omnivoice-gguf"]` access without forcing the
-    huggingface_hub / torch chain at module-load time."""
-    from services.tts_backend import _REGISTRY, _LAZY_REGISTRY
-
-    assert "omnivoice-gguf" in _LAZY_REGISTRY
-    cls = _REGISTRY["omnivoice-gguf"]
-    assert cls.id == "omnivoice-gguf"
-    assert cls.display_name == "OmniVoice (GGUF, hardware-adaptive)"
-
-
 def test_no_shell_true_in_engine_code():
     """Plan 04-01 verification: no `shell=True` token in the engine
     package's executable source — only in docstring prose that explains

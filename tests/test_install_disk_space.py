@@ -179,8 +179,8 @@ def test_install_honors_catalog_allow_patterns(models_mod, monkeypatch, tmp_path
     import huggingface_hub
     from services import hf_revisions
 
-    repo_id = "audio-cpp/audio.cpp-gguf"
-    spec = next(m for m in download.KNOWN_MODELS if m["repo_id"] == repo_id)
+    repo_id = "audio-cpp/audio.cpp-gguf:dots-tts-soar-q8_0"
+    spec = next(m for m in download.KNOWN_MODELS if m.get("id") == repo_id)
     expected_patterns = spec["allow_patterns"]
     calls = []
 

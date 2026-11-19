@@ -6,7 +6,7 @@ from services import sidecar_install as si
 
 
 def _working_sidecar(monkeypatch, tmp_path):
-    spec = replace(si.get_spec("moss-tts-nano"), requires_install_marker=False,
+    spec = replace(si.get_spec("moss-tts-v15"), requires_install_marker=False,
                    weights_repo_id=None, installed_probe=lambda: True)
     monkeypatch.setitem(si.SPECS, spec.engine_id, spec)
     monkeypatch.delenv(spec.env_var, raising=False)

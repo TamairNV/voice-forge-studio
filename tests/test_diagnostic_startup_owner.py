@@ -120,7 +120,6 @@ def test_propagated_eager_startup_failure_is_reported_only_with_consent(reporter
     monkeypatch.setattr(main, "_EAGER", True)
     monkeypatch.setattr(main, "_phase_a_build", lambda: None)
     monkeypatch.setattr(main, "_phase_a_finalize", lambda: None)
-    monkeypatch.setattr(main, "_start_analytics_lifecycle", lambda *_: None)
     monkeypatch.setattr(run_sentinel, "detect_unclean_shutdown", lambda: None)
     monkeypatch.setattr(run_sentinel, "write_sentinel", lambda: None)
     async def failed(_app):

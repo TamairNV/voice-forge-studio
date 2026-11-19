@@ -111,12 +111,3 @@ def test_generate_oom_path_releases_the_failed_request(mm, monkeypatch):
         with pytest.raises(RuntimeError, match="ran out of memory"):
             generation._oom_friendly_reraise(e)
         assert released == [e]
-
-
-def test_dub_retry_recognises_xpu_oom_and_releases_it(mm, monkeypatch):
-    dub = importlib.import_module("api.routers.dub_generate")
-    released = []
-    monkeypatch.setattr(mm, "release_after_oom", released.append)
-    err = RuntimeError(_XPU_OOMS[0])
-    assert dub._prepare_oom_retry(err) is True
-    assert released == [err]

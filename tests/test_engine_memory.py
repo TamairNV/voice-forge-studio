@@ -141,9 +141,9 @@ async def test_eviction_preserves_leased_engine_then_releases_it(instance_cache,
     running = Running()
     instance_cache[Running] = running
     with tts_backend.engine_in_use(running):
-        assert await _evict('kittentts') == []
+        assert await _evict('voxcpm2') == []
         assert not running.unloaded
-    assert await _evict('kittentts') == ['running-test']
+    assert await _evict('voxcpm2') == ['running-test']
     assert running.unloaded
 
 

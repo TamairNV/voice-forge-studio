@@ -59,13 +59,8 @@ def test_sensitive_logging_sites_emit_metadata_not_paths_keys_or_tracebacks():
     sources = {
         path: (repository_root / path).read_text(encoding="utf-8")
         for path in (
-            "backend/api/routers/dub_export.py",
-            "backend/api/routers/batch.py",
-            "backend/api/routers/marketplace.py",
             "backend/api/routers/system.py",
-            "backend/services/dub_pipeline.py",
             "backend/services/settings_store.py",
-            "backend/services/sonitranslate.py",
         )
     }
     combined = "\n".join(sources.values())

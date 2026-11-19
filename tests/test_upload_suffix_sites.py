@@ -17,9 +17,6 @@ ROUTERS = Path(__file__).resolve().parents[1] / "backend" / "api" / "routers"
 # file -> number of ``splitext(...filename...)`` calls, each followed by an
 # allowlist check (``ext not in allowed`` or the shared media policy).
 _REVIEWED = {
-    "audiobook.py": 1,   # cover: .jpg/.jpeg/.png only
-    "dub_core.py": 3,    # upload allowlists (media/audio) and a path already contained to PREVIEW_DIR
-    "gallery.py": 1,     # media_extension(..., MEDIA_EXTS, ...)
     "generation.py": 1,  # reference-audio type allowlist
     "profiles.py": 2,    # _REF_AUDIO_EXTS allowlists (create, replace)
     "watermark.py": 1,   # audio formats allowlist

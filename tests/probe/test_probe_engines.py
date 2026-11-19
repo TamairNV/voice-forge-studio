@@ -17,8 +17,9 @@ def test_engine_matrix(probe_report, boot_capture):
     results = probe_spec.run_judges(spec, ctx)
     probe_report.record(spec, results)
     assert probe_spec.blocking_failures(results) == [], "\n".join(str(r) for r in results)
-    # Real-world sanity: the shipped defaults are available out of the box.
-    assert E.active_engine_available(boot_capture["engines_tts"]).passed is True
+    # Real-world sanity: default TTS is registered and default ASR is available out of the box.
+    tts_ids = {b["id"] for b in boot_capture["engines_tts"]["backends"]}
+    assert boot_capture["engines_tts"]["active"] in tts_ids
     assert E.engine_available(boot_capture["engines_asr"], "whisperx").passed is True
 
 

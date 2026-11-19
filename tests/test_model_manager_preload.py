@@ -117,6 +117,7 @@ def test_checkpoint_resolution_preserves_test_sentinel_and_repairs_engine_id(
 
 
 def _configure_preload(manager, monkeypatch, *, cached):
+    monkeypatch.setenv("OMNIVOICE_TTS_BACKEND", "omnivoice")
     monkeypatch.setattr(
         "core.device_caps.detect_host_caps",
         lambda: types.SimpleNamespace(family="cpu"),
@@ -235,8 +236,9 @@ def test_preload_respects_engine_environment_override(
     assert model_manager.model is (loaded if should_load else None)
 
 
-def test_preload_keeps_default_omnivoice_warmup(model_manager, monkeypatch):
-    """Missing engine preferences and overrides preserve the default warm-up."""
+def test_preload_skips_when_default_engine_is_not_omnivoice(model_manager, monkeypatch):
+    """Missing engine preferences and overrides use the platform default (not OmniVoice),
+    so native OmniVoice preload is skipped."""
     from core import prefs
 
     monkeypatch.delenv("OMNIVOICE_TTS_BACKEND")
@@ -251,4 +253,4 @@ def test_preload_keeps_default_omnivoice_warmup(model_manager, monkeypatch):
     monkeypatch.setattr(model_manager, "_load_model_with_timeout", fake_load)
     asyncio.run(model_manager.preload_model())
 
-    assert model_manager.model is loaded
+    assert model_manager.model is None

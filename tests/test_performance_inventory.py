@@ -90,19 +90,6 @@ def test_auto_quality_does_not_strand_tts_or_dictation_on_the_smallest_model(loc
     assert plan["families"]["dictation"]["tier"] == "quality"
 
 
-def test_incomplete_omni_is_not_selected(local_inventory, monkeypatch):
-    from api.routers.setup import models
-    monkeypatch.setattr(models, "cache_is_complete", lambda model: model["repo_id"] != "k2-fsa/OmniVoice")
-    entry = inventory.profile_plan("max", {}, local_inventory)["families"]["tts"]
-    assert entry["selection"]["engine"] == "kittentts"
-    assert entry["reason"] == "installed"
-
-
-def test_missing_omni_package_is_not_selected(local_inventory, monkeypatch):
-    monkeypatch.setattr(inventory, "tts_installed", lambda engine: engine == "kittentts")
-    assert inventory.profile_plan("max", {}, local_inventory)["families"]["tts"]["selection"]["engine"] == "kittentts"
-
-
 def test_low_does_not_remove_voice_cloning(local_inventory):
     local_inventory["tts"] = {"engine": "omnivoice", "model": "k2-fsa/OmniVoice"}
     assert inventory.profile_plan("fast", {}, local_inventory)["families"]["tts"]["selection"]["engine"] == "omnivoice"
@@ -115,7 +102,7 @@ def test_env_pinned_tts_is_preserved(local_inventory, monkeypatch):
     assert entry["reason"] == "kept"
 
 
-@pytest.mark.parametrize("runtime", ["omnivoice-subprocess", "omnivoice-isolated"])
+@pytest.mark.parametrize("runtime", ["omnivoice-isolated"])
 def test_preserves_selected_omnivoice_isolation(local_inventory, runtime, monkeypatch):
     from services import tts_backend
     # The legacy isolated ID is not registered. Retain it without probing a

@@ -156,6 +156,7 @@ def test_a_failed_preload_shows_up_in_the_status(mm, monkeypatch):
     healthy and produced nothing until a generation failed much later."""
     import asyncio
 
+    monkeypatch.setenv("OMNIVOICE_TTS_BACKEND", "omnivoice")
     monkeypatch.setattr(mm, "model", None, raising=False)
     monkeypatch.setattr(mm, "resolve_omnivoice_checkpoint", lambda: "org/model")
     monkeypatch.setattr(mm, "_checkpoint_in_local_cache", lambda *a, **kw: True)
@@ -185,6 +186,7 @@ def test_a_successful_preload_clears_a_previous_failure(mm, monkeypatch):
     failure left behind (CodeRabbit)."""
     import asyncio
 
+    monkeypatch.setenv("OMNIVOICE_TTS_BACKEND", "omnivoice")
     mm._set_loading("failed", "something broke", error="something broke")
     assert mm.get_model_status().get("error")
 
@@ -226,6 +228,7 @@ def test_preload_oom_status_is_actionable_and_does_not_publish_allocator_details
 ):
     import asyncio
 
+    monkeypatch.setenv("OMNIVOICE_TTS_BACKEND", "omnivoice")
     monkeypatch.setattr(mm, "model", None, raising=False)
     monkeypatch.setattr(mm, "resolve_omnivoice_checkpoint", lambda: "org/model")
     monkeypatch.setattr(mm, "_checkpoint_in_local_cache", lambda *a, **kw: True)
@@ -256,6 +259,7 @@ def test_the_fallback_detail_does_not_leak_a_path(mm, monkeypatch):
     /model/status (CodeRabbit)."""
     import asyncio
 
+    monkeypatch.setenv("OMNIVOICE_TTS_BACKEND", "omnivoice")
     monkeypatch.setattr(mm, "model", None, raising=False)
     monkeypatch.setattr(mm, "resolve_omnivoice_checkpoint", lambda: "org/model")
     monkeypatch.setattr(mm, "_checkpoint_in_local_cache", lambda *a, **kw: True)

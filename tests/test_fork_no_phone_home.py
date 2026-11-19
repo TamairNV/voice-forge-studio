@@ -12,7 +12,7 @@ def test_no_phone_home_hosts_in_backend():
         (path.relative_to(ROOT).as_posix(), host)
         for path in (ROOT / "backend").rglob("*.py")
         for host in BANNED_HOSTS
-        if host in path.read_text(errors="ignore")
+        if host in path.read_text(encoding="utf-8", errors="ignore")
         and path.relative_to(ROOT).as_posix() not in PENDING
     )
     assert hits == []

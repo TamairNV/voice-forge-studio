@@ -41,16 +41,16 @@ def test_auto_worker_retains_hardware_order_but_skips_unloadable_ct2(monkeypatch
     worker = importlib.import_module("services._performance_probe")
     asr = importlib.import_module("services.asr_backend")
     monkeypatch.setattr(asr, "_probe_available", lambda cls: True)
-    monkeypatch.setattr(worker, "_asr_ready", lambda asr, cls, probe=None: cls.id == "pytorch-whisper")
+    monkeypatch.setattr(worker, "_asr_ready", lambda asr, cls, probe=None: cls.id == "nemo-parakeet")
 
     def detect():
         """Return the first available backend in the simulated hardware priority order."""
-        for cls in (asr.WhisperXBackend, asr.FasterWhisperBackend, asr.PyTorchWhisperBackend):
+        for cls in (asr.WhisperXBackend, asr.FasterWhisperBackend, asr.NeMoASRBackend):
             if asr._probe_available(cls):
                 return cls.id
 
     monkeypatch.setattr(asr, "_auto_detect", detect)
-    assert worker.check("asr", "auto") == ("pytorch-whisper", True)
+    assert worker.check("asr", "auto") == ("nemo-parakeet", True)
 
 
 def test_other_managed_families_use_deep_preflight_only(monkeypatch):

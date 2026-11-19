@@ -8,7 +8,7 @@ from services import sidecar_install as si
 def test_completed_generation_remains_managed_and_uninstallable(monkeypatch, tmp_path):
     from core import prefs
     root = tmp_path / "engine-root"
-    spec = replace(si.get_spec("moss-tts-nano"), invalidate=lambda: None)
+    spec = replace(si.get_spec("moss-tts-v15"), invalidate=lambda: None)
     monkeypatch.setitem(si.SPECS, spec.engine_id, spec)
     monkeypatch.setattr(si, "managed_root", lambda _: root)
     monkeypatch.setattr(prefs, "get", lambda *_: None)
@@ -23,7 +23,7 @@ def test_completed_generation_remains_managed_and_uninstallable(monkeypatch, tmp
 
 def test_unmarked_generation_path_is_not_treated_as_managed(monkeypatch, tmp_path):
     root = tmp_path / "engine-root"
-    spec = si.get_spec("moss-tts-nano")
+    spec = si.get_spec("moss-tts-v15")
     monkeypatch.setitem(si.SPECS, spec.engine_id, spec)
     monkeypatch.setattr(si, "managed_root", lambda _: root)
     external = root / ".voicestudio-generations" / ("a" * 32) / spec.checkout_dirname

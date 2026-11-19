@@ -64,7 +64,7 @@ def _sidecar_patch(engine):
     return mod._patch_xpu_mem_get_info
 
 
-@pytest.fixture(params=["core", "confucius4", "moss_tts_v15"])
+@pytest.fixture(params=["core", "moss_tts_v15"])
 def patch(request, monkeypatch):
     if request.param == "core":
         mod = importlib.import_module("core.xpu_compat")
@@ -127,7 +127,7 @@ def test_the_backend_installs_it_before_any_model_can_load():
     assert torch_import < install < model_manager
 
 
-@pytest.mark.parametrize("engine", ["confucius4", "moss_tts_v15"])
+@pytest.mark.parametrize("engine", ["moss_tts_v15"])
 def test_sidecars_that_pick_xpu_apply_the_fallback(engine):
     """Both select XPU via torch.accelerator in an isolated venv; the copy
     must actually be applied on that branch."""

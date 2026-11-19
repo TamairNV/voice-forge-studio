@@ -132,6 +132,7 @@ def test_preload_warms_up_from_cache_when_network_probe_fails(monkeypatch):
     import services.model_manager as mm
 
     _fail_model_info(monkeypatch)
+    monkeypatch.setenv("OMNIVOICE_TTS_BACKEND", "omnivoice")
     monkeypatch.setattr(mm, "model", None)
     monkeypatch.setattr(mm, "resolve_omnivoice_checkpoint", lambda: "k2-fsa/OmniVoice")
     monkeypatch.setattr(mm, "_checkpoint_in_local_cache", lambda cp: True)
@@ -151,6 +152,7 @@ def test_preload_still_skips_when_not_cached(monkeypatch):
     import services.model_manager as mm
 
     _fail_model_info(monkeypatch)
+    monkeypatch.setenv("OMNIVOICE_TTS_BACKEND", "omnivoice")
     monkeypatch.setattr(mm, "model", None)
     monkeypatch.setattr(mm, "resolve_omnivoice_checkpoint", lambda: "k2-fsa/OmniVoice")
     monkeypatch.setattr(mm, "_checkpoint_in_local_cache", lambda cp: False)

@@ -272,6 +272,7 @@ def test_load_sync_bails_before_torch_when_already_shutting_down(monkeypatch):
 def test_preload_interrupted_by_shutdown_logs_info_only(monkeypatch, caplog):
     from core import device_caps
     # Exercise native preload even on hosts that normally route TTS to a sidecar.
+    monkeypatch.setenv("OMNIVOICE_TTS_BACKEND", "omnivoice")
     monkeypatch.setattr(device_caps, "detect_host_caps", lambda: types.SimpleNamespace(family="cpu"))
     async def _boom():
         raise ModelLoadInterruptedByShutdown("shutdown during load")
@@ -345,6 +346,7 @@ def test_lifespan_shutdown_mid_load_is_clean_and_clears_sentinel(
         monkeypatch.setattr(live_mm, "model", None)
         monkeypatch.setattr(live_mm, "_model_lock", asyncio.Lock())
         monkeypatch.setattr(live_mm, "_checkpoint_in_local_cache", lambda c: True)
+        monkeypatch.setenv("OMNIVOICE_TTS_BACKEND", "omnivoice")
         monkeypatch.setenv("OMNIVOICE_PRELOAD_CAPTURE_ASR", "0")
         # A fresh import inherits nothing from the previous lifespan, but an
         # in-place one would: arm loads explicitly so a leaked shutdown flag

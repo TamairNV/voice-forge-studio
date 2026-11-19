@@ -209,16 +209,3 @@ def test_a_single_chunk_that_rendered_says_nothing(ct, caplog):
         out = ct.join_rendered_chunks([_tone()], 24000)
     assert out.shape[-1] == 1000
     assert "Dropped" not in caplog.text
-
-
-def test_audiobook_uses_the_shared_helper(ct):
-    """A second inline copy of this decision is how the hole appeared the first
-    time, so pin that the audiobook path routes through the one function."""
-    import inspect
-
-    ab = importlib.import_module("services.audiobook")
-    src = inspect.getsource(ab)
-    assert "join_rendered_chunks(" in src, (
-        "audiobook no longer uses the shared join — check it has not grown its "
-        "own branch that skips the dropped-chunk reporting again"
-    )

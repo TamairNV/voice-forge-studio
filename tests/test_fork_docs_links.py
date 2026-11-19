@@ -16,7 +16,7 @@ FENCE = re.compile(r"```.*?```", re.S)
 def test_relative_links_resolve():
     broken = []
     for md in _markdown_files():
-        text = FENCE.sub("", md.read_text(errors="ignore"))
+        text = FENCE.sub("", md.read_text(encoding="utf-8", errors="ignore"))
         for target in LINK.findall(text):
             if target.startswith(("http://", "https://", "#", "mailto:")):
                 continue

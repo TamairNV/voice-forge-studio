@@ -51,23 +51,14 @@ _ALLOWED = {
     "services/tts_backend.py":
         "the engine-adapter layer itself — the seam BELOW the chokepoint; "
         "every caller marks the returned tensor",
-    "services/audiobook.py":
-        "pure chapter assembly (spans -> tensor); the audiobook router marks "
-        "the assembled chapter at its single mark_synthetic call site",
 }
 
-#: Producers that must each keep a mark_synthetic call. (sonitranslate.py is
-#: absent by design: its audio is synthesized inside the external sidecar and
-#: never passes through our tensor stage — the gap is documented at the
-#: /engines/sonitranslate/dub route, not silently ignored.)
+#: Producers that must each keep a mark_synthetic call.
 _PRODUCERS = [
     "api/routers/generation.py",
     "api/routers/voice_convert.py",
     "api/routers/openai_compat.py",
     "api/routers/tts_stream.py",
-    "api/routers/dub_generate.py",
-    "api/routers/batch.py",
-    "api/routers/audiobook.py",
     "api/routers/archetypes.py",
     "services/persona_bundle.py",
 ]

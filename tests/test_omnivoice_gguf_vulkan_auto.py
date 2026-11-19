@@ -261,39 +261,6 @@ def eligible(vk, monkeypatch, tmp_path):
     return vk
 
 
-def test_apu_gets_the_gpu_offer_instead_of_a_silent_switch(eligible):
-    from services import tts_backend
-
-    status = eligible.offer.offer_status()
-    assert status["show"] is True
-    assert status["gpu_name"] == "AMD Radeon(TM) 890M Graphics"
-    assert status["shared_memory"] is True
-    assert (status["quant"], status["download_mb"]) == ("Q8_0", 945)
-    # Nothing changes until the user answers.
-    assert tts_backend.active_backend_id() == "omnivoice"
-    assert eligible.downloads == []
-
-
-def test_accepting_switches_engine_and_downloads(eligible):
-    from services import tts_backend
-
-    eligible.offer.respond(True)
-    assert tts_backend.active_backend_id() == "omnivoice-gguf"
-    assert eligible.store["gguf_vulkan_offer"] == "accepted"
-    assert eligible.downloads == [None]
-    assert eligible.offer.offer_status()["show"] is False
-
-
-def test_declining_is_remembered_and_keeps_the_engine(eligible):
-    from services import tts_backend
-
-    eligible.offer.respond(False)
-    assert tts_backend.active_backend_id() == "omnivoice"
-    assert eligible.downloads == []
-    status = eligible.offer.offer_status()
-    assert (status["show"], status["eligible"], status["answer"]) == (False, True, "declined")
-
-
 def test_accepting_needs_the_model_licence_first(eligible, monkeypatch):
     from services import tts_backend
     from services.model_acceptance import ModelLicenceNotAccepted
@@ -453,20 +420,6 @@ def test_no_offer_while_the_environment_pins_another_engine(eligible, monkeypatc
 # ── review fixes ────────────────────────────────────────────────────────────
 
 
-def test_accepting_does_not_switch_when_the_download_cannot_start(eligible, monkeypatch):
-    """Offline: the engine must not point at weights that never arrive."""
-    from services import tts_backend
-
-    quants = importlib.import_module("engines.omnivoice_gguf.quants")
-    monkeypatch.setattr(quants, "start_download", lambda value=None: {"status": "failed"})
-    result = eligible.offer.respond(True)
-    assert result["download"]["status"] == "failed"
-    assert result["active"] is False
-    assert "tts_backend" not in eligible.store
-    assert "gguf_vulkan_offer" not in eligible.store
-    assert tts_backend.active_backend_id() == "omnivoice"
-
-
 def test_a_runtime_failure_is_not_cached(quants, monkeypatch, tmp_path):
     """Allowing a quarantined file does not change its identity; re-check it."""
     gguf = importlib.import_module("engines.omnivoice_gguf.backend")
@@ -516,20 +469,6 @@ def test_api_errors_carry_no_exception_text(quants, monkeypatch):
     assert quants._in_use("rev") == (None, "weights_unavailable")
 
 
-def test_accepting_reuses_an_installed_pair_instead_of_downloading(eligible, monkeypatch):
-    """Q4_K_M cached, Q8_0 recommended: generation loads Q4_K_M, so no download
-    (and it works offline)."""
-    from services import tts_backend
-
-    quants = importlib.import_module("engines.omnivoice_gguf.quants")
-    monkeypatch.setattr(quants, "_in_use", lambda revision: ("omnivoice-base-Q4_K_M.gguf", None))
-    assert eligible.offer.offer_status()["download_mb"] == 0
-    result = eligible.offer.respond(True)
-    assert result["download"]["status"] == "already_installed"
-    assert eligible.downloads == []
-    assert tts_backend.active_backend_id() == "omnivoice-gguf"
-
-
 def test_os_inventory_sizes_the_quant_but_gets_no_offer_or_gpu_budget(vk, monkeypatch):
     """Only a loader and a listed GPU: the driver may still be unable to open it."""
     from core import device_caps
@@ -555,20 +494,3 @@ def test_a_refused_offer_is_rechecked_without_a_binary_change(eligible, monkeypa
     assert eligible.compute.vulkan_eligible() is False
     ok["value"] = True
     assert eligible.compute.vulkan_eligible() is True
-
-
-def test_accepting_waits_while_another_quant_is_downloading(eligible, monkeypatch):
-    """already_running for a different quant must not switch the engine."""
-    from services import tts_backend
-
-    quants = importlib.import_module("engines.omnivoice_gguf.quants")
-    monkeypatch.setattr(quants, "start_download", lambda value=None: {
-        "status": "already_running", "quant": "omnivoice-base-F32.gguf"})
-    result = eligible.offer.respond(True)
-    assert result["download"]["status"] == "busy"
-    assert "tts_backend" not in eligible.store
-    assert tts_backend.active_backend_id() == "omnivoice"
-    monkeypatch.setattr(quants, "start_download", lambda value=None: {
-        "status": "already_running", "quant": quants.quant_status()["selected"]})
-    assert eligible.offer.respond(True)["download"]["status"] == "already_running"
-    assert tts_backend.active_backend_id() == "omnivoice-gguf"

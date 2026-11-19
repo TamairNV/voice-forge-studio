@@ -137,31 +137,16 @@ def _patch_db(monkeypatch, row):
     monkeypatch.setattr(db, "db_conn", lambda: _fake_db(row))
 
 
-def test_batch_voice_refuses_rows_outside_voices(escaped_voice, monkeypatch):
-    from api.routers import batch
+def test_stream_resolver_ignores_rows_outside_voices(escaped_voice, monkeypatch):
+    from api.routers import tts_stream
     from core import config
 
     monkeypatch.setattr(config, "VOICES_DIR", escaped_voice)
     _patch_db(monkeypatch, _profile_row(ref_audio_path="../outside.wav"))
-    with pytest.raises(ValueError):
-        batch._batch_voice("p1")
-
-    _patch_db(monkeypatch, _profile_row(ref_audio_path="ok.wav"))
-    assert batch._batch_voice("p1")["ref_audio"] == os.path.join(escaped_voice, "ok.wav")
-
-
-def test_audiobook_and_stream_resolvers_ignore_rows_outside_voices(escaped_voice, monkeypatch):
-    from api.routers import audiobook, tts_stream
-    from core import config
-
-    monkeypatch.setattr(config, "VOICES_DIR", escaped_voice)
-    _patch_db(monkeypatch, _profile_row(ref_audio_path="../outside.wav"))
-    assert audiobook._resolve_voice("p1")["ref_audio"] is None
     assert tts_stream.build_stream_kwargs({"voice": "p1", "text": "hi"}).get("ref_audio") is None
 
     _patch_db(monkeypatch, _profile_row(ref_audio_path="ok.wav"))
     expected = os.path.join(escaped_voice, "ok.wav")
-    assert audiobook._resolve_voice("p1")["ref_audio"] == expected
     assert tts_stream.build_stream_kwargs({"voice": "p1", "text": "hi"})["ref_audio"] == expected
 
 

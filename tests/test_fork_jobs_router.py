@@ -14,5 +14,5 @@ def test_jobs_router_owns_job_routes():
 
 
 def test_dub_export_no_longer_has_them():
-    from api.routers import dub_export
-    assert not (_routes(dub_export.router) & JOB_ROUTES)
+    import importlib.util
+    assert importlib.util.find_spec("api.routers.dub_export") is None

@@ -10,12 +10,12 @@ EXPECTED = {"/design/describe", "/generate", "/health", "/history",
 
 
 def _route_paths():
-    return {line.split(" ", 1)[1] for line in SNAPSHOT.read_text().splitlines()
+    return {line.split(" ", 1)[1] for line in SNAPSHOT.read_text(encoding="utf-8").splitlines()
             if line and not line.startswith("#")}
 
 
 def test_mcp_calls_found():
-    assert set(CALLS.findall(MCP.read_text())) == EXPECTED
+    assert set(CALLS.findall(MCP.read_text(encoding="utf-8"))) == EXPECTED
 
 
 def test_every_mcp_path_is_a_live_route():

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-DEFAULT = "k2-fsa/OmniVoice"
+DEFAULT = "openbmb/VoxCPM2"
 
 
 class _Ready:
@@ -49,7 +49,7 @@ def _engine_repo(wizard, engine: str) -> str:
 
 def test_a_ready_custom_engine_lets_first_run_continue(setup):
     wizard, choose = setup
-    choose("kittentts", _Ready, downloaded={_engine_repo(wizard, "kittentts")})
+    choose("cosyvoice", _Ready, downloaded={_engine_repo(wizard, "cosyvoice")})
     status = wizard.setup_status()
     assert status["models_ready"] is True
     assert status["missing"] == []
@@ -57,13 +57,13 @@ def test_a_ready_custom_engine_lets_first_run_continue(setup):
 
 def test_an_installed_engine_without_its_weights_keeps_the_requirement(setup):
     wizard, choose = setup
-    choose("kittentts", _Ready)
+    choose("cosyvoice", _Ready)
     assert wizard.setup_status()["models_ready"] is False
 
 
 def test_the_default_engine_still_needs_its_model(setup):
     wizard, choose = setup
-    choose("omnivoice", _Ready)
+    choose("voxcpm2", _Ready)
     status = wizard.setup_status()
     assert status["models_ready"] is False
     assert [m["repo_id"] for m in status["missing"]] == [DEFAULT]
@@ -71,7 +71,7 @@ def test_the_default_engine_still_needs_its_model(setup):
 
 def test_an_unready_or_unknown_choice_keeps_the_requirement(setup, monkeypatch):
     wizard, choose = setup
-    choose("kittentts", _NotReady, downloaded={_engine_repo(wizard, "kittentts")})
+    choose("cosyvoice", _NotReady, downloaded={_engine_repo(wizard, "cosyvoice")})
     assert wizard.setup_status()["models_ready"] is False
 
     from services import tts_backend

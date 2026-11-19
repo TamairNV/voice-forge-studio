@@ -204,7 +204,7 @@ def test_generate_default_path_still_runs_omnivoice(client, monkeypatch, tmp_pat
     # Neutralize any persisted Settings pick so the default resolution applies.
     from core import prefs as _prefs
     monkeypatch.setattr(_prefs, "_PREFS_PATH", str(tmp_path / "prefs.json"))
-    monkeypatch.delenv("OMNIVOICE_TTS_BACKEND", raising=False)
+    monkeypatch.setenv("OMNIVOICE_TTS_BACKEND", "omnivoice")
 
     mock_model = MagicMock()
     mock_model.sampling_rate = 24000

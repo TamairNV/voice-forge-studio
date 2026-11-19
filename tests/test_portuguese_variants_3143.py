@@ -144,7 +144,22 @@ def test_language_options_list_variants_only_with_portuguese(monkeypatch):
     from services import tts_backend
     options = tts_backend.language_options("omnivoice")
     assert {"portuguese", "portuguese (brazil)", "portuguese (portugal)"} <= set(options)
-    english_only = tts_backend.language_options("kittentts")
+
+    class _EnOnly(tts_backend.TTSBackend):
+        id = "stub-en-pt-test"
+        display_name = "Stub EN"
+        sample_rate = 24000
+        supported_languages = ["en"]
+
+        @classmethod
+        def is_available(cls):
+            return True, "ready"
+
+        def generate(self, text, **kw):
+            raise AssertionError("not used")
+
+    monkeypatch.setitem(tts_backend._REGISTRY, "stub-en-pt-test", _EnOnly)
+    english_only = tts_backend.language_options("stub-en-pt-test")
     assert "portuguese (brazil)" not in english_only
 
 

@@ -132,9 +132,6 @@ def test_every_download_endpoint_actually_uses_the_builder():
     }
     for expected in (
         "personas.py",
-        "marketplace.py",
-        "stories.py",
-        "dub_export.py",
         "openai_compat.py",
     ):
         assert expected in users, f"{expected} still builds the header itself"

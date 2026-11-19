@@ -117,7 +117,6 @@ def test_list_loaded_empty(monkeypatch):
     # made this test pass serially and fail depending on worker placement.
     monkeypatch.setattr("services.subprocess_backend.list_live_sidecars", lambda: [])
     monkeypatch.setattr("services.asr_backend._capture_backend", None)
-    monkeypatch.setattr("api.routers.dub_translate._nllb_model", None)
     monkeypatch.setattr("api.routers.engines._ENGINE_INSTANCES", {})
     monkeypatch.setattr("services.tts_backend._active_instance", None)
     monkeypatch.setattr("services.tts_backend._active_instance_id", None)

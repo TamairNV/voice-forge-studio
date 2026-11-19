@@ -5,7 +5,7 @@ from services import sidecar_install as si
 
 
 def test_manual_selection_during_repair_is_not_overwritten(monkeypatch, tmp_path):
-    spec = replace(si.get_spec("moss-tts-nano"), requires_install_marker=False,
+    spec = replace(si.get_spec("moss-tts-v15"), requires_install_marker=False,
                    weights_repo_id=None, installed_probe=lambda: True)
     monkeypatch.setitem(si.SPECS, spec.engine_id, spec)
     monkeypatch.delenv(spec.env_var, raising=False)
@@ -37,7 +37,7 @@ def test_manual_selection_during_repair_is_not_overwritten(monkeypatch, tmp_path
 def test_generation_directory_symlink_cannot_escape_managed_root(monkeypatch, tmp_path):
     import pytest
     from services import sidecar_generations
-    spec = si.get_spec("moss-tts-nano")
+    spec = si.get_spec("moss-tts-v15")
     root, external = tmp_path / "root", tmp_path / "outside"
     root.mkdir()
     external.mkdir()
@@ -54,7 +54,7 @@ def test_persist_failure_keeps_previous_selection_and_retains_stage(monkeypatch,
     import os
 
     from core import prefs
-    spec = replace(si.get_spec("moss-tts-nano"), requires_install_marker=False,
+    spec = replace(si.get_spec("moss-tts-v15"), requires_install_marker=False,
                    weights_repo_id=None, installed_probe=lambda: True, invalidate=lambda: None)
     monkeypatch.setitem(si.SPECS, spec.engine_id, spec)
     monkeypatch.delenv(spec.env_var, raising=False)
@@ -93,7 +93,7 @@ def test_persist_failure_keeps_previous_selection_and_retains_stage(monkeypatch,
 
 def test_externally_pinned_path_is_not_silently_replaced(monkeypatch, tmp_path):
     from core import prefs
-    spec = replace(si.get_spec("moss-tts-nano"), requires_install_marker=False,
+    spec = replace(si.get_spec("moss-tts-v15"), requires_install_marker=False,
                    weights_repo_id=None, installed_probe=lambda: True)
     monkeypatch.setitem(si.SPECS, spec.engine_id, spec)
     monkeypatch.setattr(si, "managed_root", lambda _: tmp_path)
@@ -116,7 +116,7 @@ def test_externally_pinned_path_is_not_silently_replaced(monkeypatch, tmp_path):
 
 def test_external_checkout_link_aborts_repair_without_touching_user_data(monkeypatch, tmp_path):
     import pytest
-    spec = replace(si.get_spec("moss-tts-nano"), requires_install_marker=False,
+    spec = replace(si.get_spec("moss-tts-v15"), requires_install_marker=False,
                    weights_repo_id=None, installed_probe=lambda: True)
     monkeypatch.setitem(si.SPECS, spec.engine_id, spec)
     monkeypatch.delenv(spec.env_var, raising=False)
