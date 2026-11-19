@@ -184,68 +184,13 @@ def _request(**fields):
     return TranslateRequest(segments=[], **fields)
 
 
-def test_plain_portuguese_target_means_brazilian():
-    from api.routers.dub_translate import _resolve_target_dialect
-    req = _request(target_lang="pt")
-    _resolve_target_dialect(req)
-    assert (req.target_lang, req.dialect) == ("pt", "pt-BR")
 
 
-def test_regional_target_becomes_base_plus_dialect():
-    from api.routers.dub_translate import _resolve_target_dialect
-    req = _request(target_lang="pt-PT")
-    _resolve_target_dialect(req)
-    assert (req.target_lang, req.dialect) == ("pt", "pt-PT")
-    other = _request(target_lang="es")
-    _resolve_target_dialect(other)
-    assert other.dialect is None
 
 
-def test_regional_segment_targets_become_base_codes():
-    from api.routers.dub_translate import _resolve_target_dialect
-    from schemas.requests import TranslateRequest
-
-    req = TranslateRequest(
-        segments=[{"id": "s1", "text": "Hi", "target_lang": "pt-PT"},
-                  {"id": "s2", "text": "Hi", "target_lang": "es-AR"}],
-        target_lang="pt",
-    )
-    _resolve_target_dialect(req)
-    assert [seg.target_lang for seg in req.segments] == ["pt", "es-AR"]
 
 
-def test_resolver_accepts_request_objects_without_a_dialect_field():
-    from types import SimpleNamespace
-
-    from api.routers.dub_translate import _resolve_target_dialect
-
-    req = SimpleNamespace(target_lang="pt-PT", segments=[])
-    _resolve_target_dialect(req)
-    assert (req.target_lang, req.dialect) == ("pt", "pt-PT")
 
 
-def test_mt_engine_reports_the_variant_it_wrote():
-    """NLLB's por_Latn is Brazilian: pt-BR counts as applied, pt-PT names pt-BR."""
-    from api.routers.dub_translate import _dialect_flags
-    assert _dialect_flags(_request(target_lang="pt", dialect="pt-BR"), applied=False) == {
-        "dialect": "pt-BR", "dialect_applied": True,
-    }
-    assert _dialect_flags(_request(target_lang="pt", dialect="pt-PT"), applied=False) == {
-        "dialect": "pt-PT", "dialect_applied": False, "dialect_used": "pt-BR",
-    }
-    # An LLM that honoured it says so plainly.
-    assert _dialect_flags(_request(target_lang="pt", dialect="pt-PT"), applied=True) == {
-        "dialect": "pt-PT", "dialect_applied": True,
-    }
 
 
-def test_fast_mt_translation_to_european_portuguese_says_brazilian_was_used():
-    from api.routers import dub_translate
-
-    async def run():
-        req = _request(target_lang="pt", quality="fast", dialect="pt-PT")
-        return await dub_translate._maybe_cinematic([], req, "en", asyncio.get_running_loop())
-
-    result = asyncio.run(run())
-    assert result["dialect_applied"] is False
-    assert result["dialect_used"] == "pt-BR"

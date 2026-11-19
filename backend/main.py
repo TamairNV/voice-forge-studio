@@ -787,10 +787,6 @@ def _phase_a_build_inner() -> None:
         exports,
         jobs,
         generation,
-        dub_core,
-        dub_generate,
-        dub_export,
-        dub_translate,
         projects,
         engines,
         tools,
@@ -818,8 +814,8 @@ def _phase_a_build_inner() -> None:
     )
     from api.routers import mcp_bindings as _mcp_bindings_router  # noqa: E402
     _router_modules.extend([
-        system, profiles, profile_images, exports, jobs, generation, voice_convert, sfx, dub_core, dub_generate,
-        dub_export, dub_translate, projects, engines, tools,
+        system, profiles, profile_images, exports, jobs, generation, voice_convert, sfx,
+        projects, engines, tools,
         stories, setup, archetypes, describe_voice,
         watermark, events, capture, capture_ws, speech_platform, dictation,
         openai_compat, tts_stream, personas,

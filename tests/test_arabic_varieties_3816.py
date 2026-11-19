@@ -89,10 +89,3 @@ def test_indextts_speaks_a_variety_as_its_declared_arabic(monkeypatch):
     assert sent[0]["lang"] == "ar"
 
 
-@pytest.mark.parametrize(("value", "expected"), [
-    ("arb", "ar"), ("arz", "ar"), ("apc", "ar"), ("ary", "ar"), ("ars", "ar"), ("aju", None),
-])
-def test_dub_source_detection_folds_every_arabic_variety(value, expected):
-    from services.dub_language import detected_source_language
-
-    assert detected_source_language(value) == expected

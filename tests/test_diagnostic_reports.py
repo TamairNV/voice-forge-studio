@@ -554,26 +554,6 @@ def test_killed_startup_revokes_without_a_reporting_policy(reporter,monkeypatch,
     assert not restarted.thread.is_alive()
 
 
-def test_argos_terminal_error_row_is_reported_without_losing_partial_results(reporter,monkeypatch):
-    from test_dub_translate import _install_fake_argos
-    from api.routers.dub_translate import dub_translate,TranslateRequest
-    import importlib
-    _install_fake_argos(monkeypatch)
-    def translate(text,*_):
-        if text=='private failure':raise RuntimeError('private provider response')
-        return '[es]'+text
-    monkeypatch.setattr(importlib.import_module('argostranslate.translate'),'translate',translate)
-    reporter.consent(True)
-    result=asyncio.run(dub_translate(TranslateRequest(
-        provider='argos',source_lang='en',target_lang='es',quality='fast',
-        segments=[{'id':'bad','text':'private failure'},{'id':'good','text':'Hello'}],
-    )))
-    rows=result['translated']
-    assert len(rows)==2 and rows[0]['error'] and rows[1]['text']=='[es]Hello'
-    saved=records(reporter)
-    assert len(saved)==1 and saved[0]['props']['stage']=='translation'
-    assert saved[0]['props']['error_type']=='RuntimeError'
-    assert 'private' not in json.dumps(saved)
 
 
 def test_asr_compute_deadline_is_not_saved_as_network_error(reporter,monkeypatch):
@@ -662,32 +642,6 @@ def test_reporter_fixture_tracks_runtime_module_replacement(monkeypatch,tmp_path
     finally:fixture.close()
 
 
-def test_cancelled_argos_request_does_not_report_late_worker_failure(reporter,monkeypatch):
-    from concurrent.futures import ThreadPoolExecutor
-    from test_dub_translate import _install_fake_argos
-    from api.routers import dub_translate
-    _install_fake_argos(monkeypatch)
-    entered=threading.Event();release=threading.Event()
-    def translate(*_):
-        entered.set()
-        assert release.wait(2)
-        raise RuntimeError('private provider response')
-    monkeypatch.setattr(importlib.import_module('argostranslate.translate'),'translate',translate)
-    reporter.consent(True)
-    with ThreadPoolExecutor(max_workers=1) as pool:
-        monkeypatch.setattr(dub_translate,'_cpu_pool',pool)
-        async def run():
-            task=asyncio.create_task(dub_translate.dub_translate(dub_translate.TranslateRequest(
-                provider='argos',source_lang='en',target_lang='es',quality='fast',
-                segments=[{'id':'bad','text':'private recording'}],
-            )))
-            try:
-                assert await asyncio.to_thread(entered.wait,1)
-                task.cancel()
-                with pytest.raises(asyncio.CancelledError):await task
-            finally:release.set()
-        asyncio.run(run())
-    assert records(reporter)==[]
 
 
 

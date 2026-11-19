@@ -285,56 +285,7 @@ def transcribe_job(tmp_path, monkeypatch):
         dc._dub_jobs.pop(job_id, None)
 
 
-def test_aborted_transcribe_still_restores_the_tts_model(transcribe_job):
-    """THE REPORTED BUG. Fail-before: the restore lived only on the success
-    path, so aborting a dub left the TTS model on CPU for the rest of the
-    process — and every later generation crawled."""
-    job_id, job, calls = transcribe_job
-    job["aborted"] = True
-
-    body = _run_transcribe_stream(job_id, calls["restored"])
-
-    assert "event: aborted" in body, body
-    assert calls["offload"] == 1, "precondition: the stream must have offloaded"
-    # The restore is dispatched fire-and-forget to a thread pool from the stream's
-    # `finally` (dub_core: run_in_executor(_cpu_pool, restore_tts_after_asr)), so we
-    # wait on the Event rather than assume it's done on return. The wait returns the
-    # instant restore fires; the generous timeout only matters on a genuine
-    # never-restored regression, and keeps a slow/loaded CI runner from flaking.
-    assert calls["restored"].wait(timeout=60), (
-        "an aborted transcribe left the TTS model stranded on CPU (#1191)"
-    )
-    assert calls["restore"] == 1
 
 
-def test_crashed_transcribe_still_restores_the_tts_model(transcribe_job, monkeypatch):
-    """Same debt, different exit path: an unanticipated mid-stream exception."""
-    from api.routers import dub_core as dc
-
-    job_id, _job, calls = transcribe_job
-
-    def _boom(*a, **k):
-        raise RuntimeError("segmentation exploded: simulated")
-
-    monkeypatch.setattr(dc, "segment_transcript", _boom)
-
-    body = _run_transcribe_stream(job_id, calls["restored"])
-
-    assert "event: error" in body, body
-    assert calls["offload"] == 1
-    # Same fire-and-forget restore dispatch as the aborted case — wait generously
-    # so a loaded CI runner can't flake, while a real never-restored bug still fails.
-    assert calls["restored"].wait(timeout=60), (
-        "a crashed transcribe left the TTS model stranded on CPU (#1191)"
-    )
 
 
-def test_successful_transcribe_restores_exactly_once(transcribe_job):
-    """The finally must not double-restore what the success path already paid."""
-    job_id, _job, calls = transcribe_job
-
-    body = _run_transcribe_stream(job_id, calls["restored"])
-
-    assert "event: final" in body, body  # the real success path, not an error exit
-    assert calls["offload"] == 1
-    assert calls["restore"] == 1, "restore ran twice — the success path already paid it"

@@ -377,20 +377,6 @@ def test_audiobook_preview_route_output_is_watermarked(tmp_path, monkeypatch, ma
 # ── POST /dub/preview-segment/{job_id} ───────────────────────────────────────
 
 
-def test_dub_preview_segment_response_is_watermarked(monkeypatch, marking_on):
-    import api.routers.dub_generate as dg
-    fake = _make_fake_engine("fake-wm-dub")
-
-    async def _fake_resolve(**kw):
-        return fake()
-
-    monkeypatch.setattr(dg, "resolve_generation_backend", _fake_resolve)
-    monkeypatch.setattr(dg, "_get_job", lambda job_id: {"speaker_clones": {}})
-
-    res = asyncio.run(dg.preview_segment("jobX", dg.SegmentPreviewRequest(
-        text="Hello there", language="Auto")))
-    wav, sr = _wav_from_bytes(res.body)
-    _assert_marked(wav, sr, "POST /dub/preview-segment/{job_id}")
 
 
 # ── Archetypes: preview clip + materialized profile reference ────────────────

@@ -76,42 +76,10 @@ def _client():
     return TestClient(app, client=("127.0.0.1", 50000))
 
 
-def test_dub_vtt_download_escapes_text_and_keeps_markup(dub_job):
-    plain = _client().get(f"/dub/vtt/{dub_job}")
-    assert plain.status_code == 200
-    assert _cues(plain.text) == [_ESCAPED, _MARKUP]
-
-    dual = _client().get(f"/dub/vtt/{dub_job}", params={"dual": "true"})
-    assert dual.status_code == 200
-    assert _cues(dual.text)[0] == f"{_ESCAPED}\n<i>Tom &amp; Jerry &lt;3</i>"
 
 
-def test_imported_webvtt_exports_what_it_showed():
-    from services.dub_pipeline import _dub_jobs
-    from services.srt_parser import parse_srt
-
-    imported = (
-        "WEBVTT\n\n"
-        "00:00:01.000 --> 00:00:02.000\nQ&amp;A with Tom &amp; Jerry\n\n"
-        "00:00:03.000 --> 00:00:04.000\nI &lt;3 you &gt;&gt; ok\n\n"
-        "00:00:05.000 --> 00:00:06.000\n<i>Hi</i> there\n"
-    )
-    job_id = _vtt_job(parse_srt(imported).segments)
-    try:
-        exported = _client().get(f"/dub/vtt/{job_id}")
-    finally:
-        _dub_jobs.pop(job_id, None)
-
-    assert exported.status_code == 200
-    cues = _cues(exported.text)
-    assert [_shown(cue) for cue in cues] == ["Q&A with Tom & Jerry", "I <3 you >> ok", "Hi there"]
-    assert cues[2] == "<i>Hi</i> there"
 
 
-def test_dub_srt_download_keeps_text_as_written(dub_job):
-    srt = _client().get(f"/dub/srt/{dub_job}")
-    assert srt.status_code == 200
-    assert _TEXT in srt.text.splitlines()
 
 
 @pytest.mark.parametrize(("text", "escaped"), [
@@ -137,14 +105,3 @@ def test_openai_compat_vtt_transcription_escapes_cue_text(monkeypatch, text, esc
     assert _cues(response.body.decode("utf-8")) == [escaped]
 
 
-def test_imported_literal_tags_and_entities_keep_their_provenance():
-    from services.srt_parser import parse_srt
-    from services.dub_pipeline import _dub_jobs
-    source = "&lt;i&gt;literal&lt;/i&gt; &amp;lt;b&amp;gt; <i>real</i>"
-    job_id = _vtt_job(parse_srt("WEBVTT\n\n00:00:01.000 --> 00:00:02.000\n" + source).segments)
-    try:
-        exported = _client().get(f"/dub/vtt/{job_id}")
-        assert _shown(_cues(exported.text)[0]) == "<i>literal</i> &lt;b&gt; real"
-        assert "<i>real</i>" in exported.text
-    finally:
-        _dub_jobs.pop(job_id, None)

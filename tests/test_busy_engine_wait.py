@@ -281,28 +281,7 @@ def _dub_events(dg, monkeypatch, *, cancelled=lambda: False):
     return "".join(events)
 
 
-def test_dub_segment_waits_out_a_busy_engine(dub_env, monkeypatch, fast_sleep):
-    dg, job, engine = dub_env
-    engine.busy_times = 2
-    body = _dub_events(dg, monkeypatch)
-    assert '"type": "error"' not in body
-    assert "es" in job["dubbed_tracks"]
-    assert engine.calls == 3 and len(fast_sleep) == 2
 
 
-def test_dub_busy_past_budget_fails_the_job(dub_env, monkeypatch, fast_sleep):
-    from services import model_manager
-    dg, job, engine = dub_env
-    engine.busy_times = 10**6
-    monkeypatch.setattr(model_manager, "generate_timeout_s", lambda *a, **k: 0.05)
-    body = _dub_events(dg, monkeypatch)
-    assert '"type": "error"' in body
-    assert job["dubbed_tracks"] == {}
 
 
-def test_dub_cancel_during_wait_is_cancelled(dub_env, monkeypatch, fast_sleep):
-    dg, job, engine = dub_env
-    engine.busy_times = 10**6
-    body = _dub_events(dg, monkeypatch, cancelled=lambda: engine.calls >= 1)
-    assert '"type": "cancelled"' in body and '"type": "error"' not in body
-    assert engine.calls == 1

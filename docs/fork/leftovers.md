@@ -10,3 +10,4 @@ One line each: `- <path or name>: <why it stays> (Task N)`.
 - config/diagnostics.json: local validation schema read by core/diagnostic_reports.py; contains no upload hosts or tokens (Task 8)
 - backend/core/db.py (cloud_sync tables): kept to avoid a schema migration; migrations 0014 and 0015 stay (Task 9)
 - gallery tables in SQLite: stay in the database to avoid a schema migration (Task 10)
+- backend/services/dub_qc.py: services/pronunciation.py imports _NO_SPACE_SCRIPT from it (Task 15)

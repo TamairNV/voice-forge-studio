@@ -294,25 +294,7 @@ def _assert_409(r):
 
 
 class TestEndpoints:
-    def test_batch_enqueue_409(self, client):
-        with _offline_asr_missing(cached=False):
-            r = client.post(
-                "/batch/enqueue",
-                files={"video": ("t.mp4", b"x", "video/mp4")},
-                data={"langs": "es"},
-            )
-        _assert_409(r)
 
-    def test_batch_enqueue_unaffected_when_installed(self, client):
-        # Backward compat: an install with whisper on disk never sees the 409.
-        # (Bad langs short-circuits before any job is actually enqueued.)
-        with _offline_asr_missing(cached=True):
-            r = client.post(
-                "/batch/enqueue",
-                files={"video": ("t.mp4", b"x", "video/mp4")},
-                data={"langs": " "},
-            )
-        assert r.status_code == 400  # the langs error, not the ASR 409
 
     def test_capture_transcribe_409(self, client):
         with _dictation_whisper_missing():
@@ -356,51 +338,8 @@ class TestEndpoints:
             )
         _assert_409(r)
 
-    def test_dub_legacy_transcribe_409(self, client, tmp_path):
-        from api.routers import dub_core
-        wav = tmp_path / "audio.wav"
-        wav.write_bytes(b"RIFF0000WAVE")
-        job = {"id": "j1", "audio_path": str(wav)}
-        with patch.object(dub_core, "_get_job", return_value=job), \
-             _offline_asr_missing(cached=False):
-            r = client.post("/dub/transcribe/j1")
-        _assert_409(r)
 
-    def test_dub_transcribe_preflights_even_with_preloaded_pipe(self, client, tmp_path):
-        """A preloaded `_asr_pipe` only substitutes for the *pytorch-whisper*
-        backend (its sole consumer) — with faster-whisper active and no
-        weights on disk, the typed 409 must still fire instead of letting the
-        backend auto-download."""
-        from api.routers import dub_core
-        wav = tmp_path / "audio.wav"
-        wav.write_bytes(b"RIFF0000WAVE")
-        job = {"id": "j3", "audio_path": str(wav)}
-        model = type("M", (), {"_asr_pipe": object()})()
 
-        async def fake_get_model():
-            return model
-
-        with patch.object(dub_core, "_get_job", return_value=job), \
-             patch.object(dub_core, "should_preload_tts_asr", return_value=True), \
-             patch.object(dub_core, "get_model", fake_get_model), \
-             _offline_asr_missing(cached=False):
-            r = client.post("/dub/transcribe/j3")
-        _assert_409(r)
-
-    def test_dub_stream_emits_typed_sse_error(self, client, tmp_path):
-        """EventSource can't read non-2xx bodies, so the SSE preflight must
-        carry the typed payload in-stream."""
-        from api.routers import dub_core
-        wav = tmp_path / "audio.wav"
-        wav.write_bytes(b"RIFF0000WAVE")
-        job = {"id": "j2", "audio_path": str(wav)}
-        with patch.object(dub_core, "_get_job", return_value=job), \
-             _offline_asr_missing(cached=False):
-            r = client.get("/dub/transcribe-stream/j2")
-        assert r.status_code == 200
-        assert "event: error" in r.text
-        assert '"error": "asr_model_missing"' in r.text
-        assert '"recommended"' in r.text
 
     def test_openai_compat_transcriptions_409(self, client):
         # #1175 review: the shared typed contract, not a string-only detail —
@@ -461,35 +400,6 @@ class TestEndpoints:
         assert msg["type"] == "error"
         assert msg["kind"] == "asr_model_missing"
 
-    def test_dub_stream_unloads_asr_on_early_terminal_error(self, client, tmp_path):
-        """#1175 review: a terminal error AFTER the ASR backend loaded (here:
-        undecodable audio) must still unload it — the unload used to live only
-        on the normal completion path, retaining VRAM on every early exit."""
-        from unittest.mock import MagicMock
-
-        from api.routers import dub_core
-        from services import asr_backend
-
-        wav = tmp_path / "audio.wav"
-        wav.write_bytes(b"RIFF0000WAVE")  # sf.read raises on this stub
-        job = {"id": "j4", "audio_path": str(wav)}
-        backend = MagicMock()
-        backend.id = "fake-asr"
-        unloaded = threading.Event()
-        backend.unload.side_effect = lambda *a, **k: unloaded.set()
-        with patch.object(dub_core, "_get_job", return_value=job), \
-             patch.object(asr_backend, "load_active_asr_backend",
-                          return_value=backend), \
-             _offline_asr_missing(cached=True):
-            r = client.get("/dub/transcribe-stream/j4")
-        assert r.status_code == 200
-        assert "Transcription failed. Check the selected ASR engine and try again." in r.text
-        assert str(wav) not in r.text
-        # The stream's `finally` hands unload() to the GPU pool
-        # fire-and-forget by design (it blocks, and runs under GeneratorExit),
-        # so it lands after the response closes. Wait on an Event it sets.
-        assert unloaded.wait(10.0), "ASR backend was never unloaded"
-        backend.unload.assert_called_once()
 
 
 class TestFallbackPreflight:

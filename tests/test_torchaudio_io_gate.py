@@ -178,18 +178,6 @@ def test_audio_info_reads_header_without_torchaudio_info(tmp_path, torchaudio_2_
     )
 
 
-def test_cached_segment_check_accepts_a_real_cache_without_torchaudio_info(
-    tmp_path, torchaudio_2_9
-):
-    from api.routers.dub_generate import _cached_payload_intact
-    from services.audio_io import audio_info
-
-    wav = tmp_path / "seg.wav"
-    _write_wav(wav)
-    assert _cached_payload_intact(str(wav), audio_info(str(wav)))
-    # A truncated payload is still rejected (the check's reason for existing).
-    wav.write_bytes(wav.read_bytes()[:-1000])
-    assert not _cached_payload_intact(str(wav), audio_info(str(wav)))
 
 
 def test_load_audio_reads_segment_when_torchcodec_is_missing(tmp_path, torchaudio_2_9):
@@ -201,23 +189,6 @@ def test_load_audio_reads_segment_when_torchcodec_is_missing(tmp_path, torchaudi
     assert rate == 24000 and tuple(samples.shape) == (1, 480)
 
 
-def test_truncated_float_wav_keeps_declared_size_so_the_cache_is_rejected(
-    tmp_path, torchaudio_2_9
-):
-    import numpy as np
-    import soundfile as sf
-
-    from api.routers.dub_generate import _cached_payload_intact
-    from services.audio_io import audio_info
-
-    wav = tmp_path / "seg.wav"
-    sf.write(str(wav), np.full(2400, 0.1, dtype="float32"), 24000, subtype="FLOAT")
-    info = audio_info(wav)
-    assert (info.num_frames, info.bits_per_sample) == (2400, 32)
-    wav.write_bytes(wav.read_bytes()[:-1000])
-    info = audio_info(wav)
-    assert info.num_frames == 2400, "libsndfile would clamp this to the bytes present"
-    assert not _cached_payload_intact(str(wav), info)
 
 
 def test_audio_info_leaves_the_stream_where_it_found_it(tmp_path, monkeypatch, torchaudio_2_9):

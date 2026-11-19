@@ -304,115 +304,8 @@ def test_probe_queue_cannot_wait_past_the_finite_unknown_duration_floor(monkeypa
             finish.set()
 
 
-@pytest.mark.usefixtures("asr_model_installed")
-def test_stream_model_preflight_spends_the_file_deadline(tmp_path, monkeypatch):
-    import threading
-    from concurrent.futures import ThreadPoolExecutor
-    from api.routers import dub_core as dub
-    from services import asr_backend as asr
-
-    path = tmp_path / "meeting.wav"
-    path.write_bytes(_recording(1500))
-    monkeypatch.setitem(dub._dub_jobs, "slow-preflight", {"audio_path": str(path), "segments": None})
-    monkeypatch.setenv("OMNIVOICE_ASR_TRANSCRIBE_TIMEOUT_S", "0.1")
-    monkeypatch.setenv("OMNIVOICE_ASR_TIMEOUT_REALTIME_FACTOR", "0")
-    monkeypatch.setattr("services.ffmpeg_utils.probe_audio_duration", lambda path: 1500)
-    monkeypatch.setattr(dub, "should_preload_tts_asr", lambda: False)
-    entered, finish = threading.Event(), threading.Event()
-
-    def preflight():
-        entered.set()
-        assert finish.wait(5)
-        return None
-
-    monkeypatch.setattr(asr, "asr_model_missing_error", preflight)
-    monkeypatch.setattr(asr, "load_active_asr_backend", lambda **kwargs: pytest.fail("expired load must not start"))
-
-    with ThreadPoolExecutor(max_workers=1) as pool:
-        monkeypatch.setattr(dub, "_cpu_pool", pool)
-
-        async def scenario():
-            response = await dub.dub_transcribe_stream("slow-preflight", per_segment_refs=False)
-
-            async def collect():
-                parts = []
-                async for part in response.body_iterator:
-                    parts.append(part.decode() if isinstance(part, bytes) else part)
-                return "".join(parts)
-
-            body = await asyncio.wait_for(collect(), timeout=1)
-            assert entered.is_set()
-            assert "transcription_timeout" in body
-            assert "event: done" in body
-
-        try:
-            asyncio.run(scenario())
-        finally:
-            finish.set()
 
 
-@pytest.mark.usefixtures("asr_model_installed")
-def test_stream_model_loading_spends_the_file_deadline_and_drains_before_restore(tmp_path, monkeypatch):
-    import threading
-    from concurrent.futures import ThreadPoolExecutor
-    from api.routers import dub_core as dub
-    from services import asr_backend as asr
-
-    path = tmp_path / "meeting.wav"
-    path.write_bytes(_recording(1500))
-    monkeypatch.setitem(dub._dub_jobs, "slow-file-load", {"audio_path": str(path), "segments": None})
-    monkeypatch.setenv("OMNIVOICE_ASR_TRANSCRIBE_TIMEOUT_S", "0.1")
-    monkeypatch.setenv("OMNIVOICE_ASR_TIMEOUT_REALTIME_FACTOR", "0")
-    monkeypatch.setattr("services.ffmpeg_utils.probe_audio_duration", lambda path: 1500)
-    monkeypatch.setattr(dub, "should_preload_tts_asr", lambda: False)
-    monkeypatch.setattr(dub, "offload_tts_for_asr", lambda: None)
-    monkeypatch.setattr(dub, "ASR_LOAD_KEEPALIVE_S", 0.01)
-    entered, finish, unloaded, restored = (threading.Event() for _ in range(4))
-
-    class Backend:
-        id = "whole-file"
-        requires_full_audio_for_speaker_consistency = True
-
-        def unload(self):
-            unloaded.set()
-
-    def load(**kwargs):
-        entered.set()
-        assert finish.wait(5)
-        return Backend()
-
-    def restore():
-        assert unloaded.is_set()
-        restored.set()
-
-    monkeypatch.setattr(asr, "load_active_asr_backend", load)
-    monkeypatch.setattr(dub, "restore_tts_after_asr", restore)
-
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        monkeypatch.setattr(dub, "_gpu_pool", pool)
-
-        async def collect():
-            response = await dub.dub_transcribe_stream("slow-file-load", per_segment_refs=False)
-            parts = []
-            async for part in response.body_iterator:
-                parts.append(part.decode() if isinstance(part, bytes) else part)
-            return "".join(parts)
-
-        async def scenario():
-            body = await asyncio.wait_for(collect(), timeout=1)
-            assert entered.is_set()
-            assert "transcription_timeout" in body
-            assert "event: done" in body
-            assert not unloaded.is_set()
-            assert not restored.is_set()
-            finish.set()
-            assert await asyncio.to_thread(unloaded.wait, 2)
-            assert await asyncio.to_thread(restored.wait, 2)
-
-        try:
-            asyncio.run(scenario())
-        finally:
-            finish.set()
 
 
 @pytest.mark.usefixtures("neutral_asr_host")
@@ -596,33 +489,6 @@ def test_installed_capture_fallback_reports_exhausted_deadline(monkeypatch):
     assert "fallback exceeded the deadline" in response.json()["detail"]
 
 
-@pytest.mark.usefixtures("asr_model_installed")
-def test_legacy_dub_uses_the_recording_budget(tmp_path, monkeypatch):
-    from api.routers import dub_core as dub
-    from services import asr_backend as asr
-    path = tmp_path / "meeting.wav"
-    path.write_bytes(_recording(1500))
-    job = {"audio_path": str(path), "duration": 1500, "segments": None}
-    monkeypatch.setitem(dub._dub_jobs, "long-recording", job)
-    monkeypatch.setattr(dub, "should_preload_tts_asr", lambda: False)
-    monkeypatch.setattr(dub, "_ensure_diarisation_accepted", lambda: None)
-    monkeypatch.setattr(dub, "_save_job", lambda *args: None)
-    monkeypatch.setattr("services.ffmpeg_utils.probe_audio_duration", lambda path: 1500, raising=False)
-    budgets = []
-    real = asr.run_transcribe_guarded
-
-    async def guarded(pool, fn, **kwargs):
-        # Keep the real request guard; recognition/postprocessing is unrelated.
-        def recognize():
-            from services.inference_cancellation import current_cancellation
-            from services.asr_timing import remaining_s
-            budgets.append(remaining_s(current_cancellation().deadline))
-            return []
-        return await real(pool, recognize, **kwargs)
-
-    monkeypatch.setattr(dub, "run_transcribe_guarded", guarded)
-    asyncio.run(dub.dub_transcribe("long-recording"))
-    assert budgets == [pytest.approx(3000, abs=1)]
 
 
 def test_remote_asr_format_fallback_does_not_renew_the_deadline(tmp_path, monkeypatch):

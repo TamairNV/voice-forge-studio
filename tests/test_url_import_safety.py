@@ -114,39 +114,8 @@ def _client():
     return TestClient(app, client=("127.0.0.1", 1))
 
 
-@pytest.mark.parametrize("ip", ["127.0.0.1", "192.168.0.5", "169.254.169.254"])
-def test_private_dub_ingest_destination_is_refused(monkeypatch, ip):
-    from core.tasks import task_manager
-
-    added = []
-
-    async def fake_add_task(*args, **kwargs):
-        added.append(args)
-
-    monkeypatch.setattr(task_manager, "add_task", fake_add_task)
-    monkeypatch.setattr(url_safety.socket, "getaddrinfo", _answers(ip))
-    response = _client().post("/dub/ingest-url", json={"url": "http://box:9000/x"})
-    assert response.status_code == 400
-    assert ALLOW_PRIVATE_ENV in response.json()["detail"]
-    assert added == []
-
-    monkeypatch.setattr(url_safety.socket, "getaddrinfo", _answers(PUBLIC_IP))
-    assert _client().post("/dub/ingest-url", json={"url": "https://v.example/x"}).status_code == 202
-    assert len(added) == 1
-
-
-@pytest.mark.parametrize("name", ["evil.conf", "cfg.txt", "run.sh", "noext"])
-def test_uploads_refuse_non_media_extensions(name):
-    client = _client()
-    dub = client.post(
-        "/dub/upload",
-        files={"video": (name, b"--exec touch /tmp/x\n", "application/octet-stream")},
-    )
-    assert dub.status_code == 415
-
-
 @pytest.mark.parametrize("name", ["evil.conf", "cfg.txt", "run.sh", "x.wav:stream", "clip.m\\..\\x"])
-def test_profile_batch_and_preview_uploads_share_the_media_policy(name):
+def test_profile_uploads_enforce_the_media_policy(name):
     client = _client()
     payload = b"--exec touch /tmp/x\n"
     profile = client.post(
@@ -155,10 +124,6 @@ def test_profile_batch_and_preview_uploads_share_the_media_policy(name):
         files={"ref_audio": (name, payload, "application/octet-stream")},
     )
     assert profile.status_code == 415
-    preview = client.post(
-        "/preview/upload", files={"video": (name, payload, "application/octet-stream")}
-    )
-    assert preview.status_code == 415
 
 
 @pytest.mark.parametrize(

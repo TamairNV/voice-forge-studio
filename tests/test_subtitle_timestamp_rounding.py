@@ -27,12 +27,6 @@ _CASES = [
 ]
 
 
-@pytest.mark.parametrize("seconds,expected", _CASES)
-def test_dub_srt_and_vtt_times_round_to_the_millisecond(seconds, expected):
-    from api.routers.dub_export import _format_srt_time, _format_vtt_time
-
-    assert _format_srt_time(seconds) == expected
-    assert _format_vtt_time(seconds) == expected.replace(",", ".")
 
 
 @pytest.mark.parametrize("seconds,expected", _CASES)
@@ -67,27 +61,5 @@ def imported_job():
 _SRT_TIMINGS = ["00:00:02,300 --> 00:00:04,100", "00:01:10,700 --> 00:01:12,900"]
 
 
-def test_imported_srt_cue_times_survive_the_srt_and_vtt_downloads(imported_job):
-    from fastapi.testclient import TestClient
-    from main import app
-
-    job_id, _ = imported_job
-    client = TestClient(app, client=("127.0.0.1", 50000))
-
-    srt = client.get(f"/dub/srt/{job_id}")
-    assert srt.status_code == 200
-    assert [line for line in srt.text.splitlines() if "-->" in line] == _SRT_TIMINGS
-
-    vtt = client.get(f"/dub/vtt/{job_id}")
-    assert vtt.status_code == 200
-    assert [line for line in vtt.text.splitlines() if "-->" in line] == [
-        t.replace(",", ".") for t in _SRT_TIMINGS
-    ]
 
 
-def test_imported_srt_cue_times_survive_burn_in(tmp_path, imported_job):
-    from api.routers.dub_export import _write_burn_srt
-
-    _, job = imported_job
-    content = open(_write_burn_srt(job, str(tmp_path), "stamp", dual=False), encoding="utf-8").read()
-    assert [line for line in content.splitlines() if "-->" in line] == _SRT_TIMINGS

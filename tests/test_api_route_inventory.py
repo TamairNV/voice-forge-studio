@@ -51,8 +51,6 @@ _CRITICAL = [
     "POST /generate", "GET /history",
     "GET /profiles", "POST /profiles", "PUT /profiles/{profile_id}",
     "DELETE /profiles/{profile_id}", "POST /design/describe",
-    "POST /dub/upload", "POST /dub/ingest-url", "POST /dub/generate/{job_id}",
-    "POST /dub/translate",
     "GET /engines", "POST /engines/select",
     "GET /archetypes",
     "POST /audiobook", "POST /stories/encode",

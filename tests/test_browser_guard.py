@@ -125,21 +125,9 @@ def test_side_effectful_get_routes_carry_the_cross_site_dependency():
 
     expected = {
         "/history",
-        "/dub/transcribe-stream/{job_id}",
-        "/dub/download/{job_id}",
-        "/dub/download/{job_id}/{filename}",
-        "/dub/download-audio/{job_id}",
-        "/dub/download-audio/{job_id}/{filename}",
-        "/dub/download-mp3/{job_id}",
-        "/dub/download-mp3/{job_id}/{filename}",
-        "/dub/preview-video/{job_id}",
-        "/dub/onsets/{job_id}",
         "/archetypes/{archetype_id}/preview",
         "/setup/preflight",
         "/models/access/status",
-        "/dub/export-stems/{job_id}",
-        "/dub/export-segments/{job_id}",
-        "/dub/preview/{job_id}/{segment_index}",
         "/audio/{audio_id}.ogg",
         "/audio/{audio_id}.opus",
         "/audio/{audio_id}.mp3",
@@ -278,13 +266,6 @@ def test_credentialed_remote_clients_are_not_host_checked(default_hosts, monkeyp
     admin_session_store.clear()
 
 
-@pytest.mark.parametrize(
-    "path", ["/dub/export-stems/abc", "/dub/export-segments/abc", "/dub/preview/abc/0"]
-)
-def test_dub_export_gets_refuse_cross_site(path):
-    response = _client().get(path, headers={"Sec-Fetch-Site": "cross-site"})
-    assert response.status_code == 403
-    assert "another website" in response.json()["detail"]
 
 
 def test_loopback_proxy_with_a_valid_key_is_not_host_checked(default_hosts, monkeypatch):

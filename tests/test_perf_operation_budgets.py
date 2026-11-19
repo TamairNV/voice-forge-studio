@@ -305,92 +305,10 @@ _SEGS_3 = [
 ]
 
 
-@pytest.mark.usefixtures("torch_dtype_isolation")
-def test_dub_remix_budget_zero_tts_calls(dub_harness):
-    """Budget: a fit-only re-mix (regen_only=[]) of fully cached segments
-    performs ZERO engine generate calls. This is the contract every
-    incremental-dub feature rides on (Phase 4.1's 70x speedup): a regression
-    that quietly re-synthesizes even one cached segment turns a seconds
-    re-mix back into a minutes re-render."""
-    run, model, job, job_dir = dub_harness
-
-    _assert_done(run(_dub_body(_SEGS_3)))
-    assert len(model.calls) == 3, "fresh run synthesizes each segment once"
-
-    _assert_done(run(_dub_body(_SEGS_3, regen_only=[])))
-    assert len(model.calls) == 3, (
-        f"budget: re-mix of cached segments makes zero TTS calls — "
-        f"{len(model.calls) - 3} extra generate(s) detected"
-    )
 
 
-@pytest.mark.usefixtures("torch_dtype_isolation")
-def test_dub_remix_budget_zero_decode_zero_rewrite(dub_harness, monkeypatch):
-    """Budget (natural-rate fast path): a re-mix of N cached same-rate
-    segments performs ZERO `torchaudio.load` and ZERO `atomic_save_wav`
-    calls in the re-mix loop — the cached WAV path goes straight into the
-    mix manifest and is decoded exactly once, by the final assembly. The
-    old path decoded each cache, wrote an identical mix_<id> scratch WAV,
-    then decoded that copy again (3 decodes + 1 write per segment)."""
-    import api.routers.dub_generate as dg
-    import torchaudio
-
-    if not hasattr(dg, "_cached_payload_intact"):
-        pytest.skip(
-            "natural-rate cached fast path (_cached_payload_intact) not "
-            "merged yet — lands with fix/perf-dub-cache-batching"
-        )
-
-    run, model, job, job_dir = dub_harness
-    _assert_done(run(_dub_body(_SEGS_3)))
-
-    load_calls: list[str] = []
-    real_load = torchaudio.load
-
-    def counting_load(path, *a, **kw):
-        load_calls.append(str(path))
-        return real_load(path, *a, **kw)
-
-    monkeypatch.setattr(torchaudio, "load", counting_load)
-
-    save_calls: list[str] = []
-    real_save = dg.atomic_save_wav
-
-    def counting_save(path, *a, **kw):
-        save_calls.append(str(path))
-        return real_save(path, *a, **kw)
-
-    monkeypatch.setattr(dg, "atomic_save_wav", counting_save)
-
-    _assert_done(run(_dub_body(_SEGS_3, regen_only=[])))
-
-    assert len(model.calls) == 3, "re-mix must not re-synthesize"
-    # Floor: the final assembly decodes each cached segment exactly once.
-    assert len(load_calls) == 3, (
-        f"budget: re-mix of 3 cached same-rate segments = exactly 3 decodes "
-        f"(assembly only) — got {len(load_calls)}: {load_calls}"
-    )
-    assert len(save_calls) == 0, (
-        f"budget: re-mix writes zero per-segment WAVs (no mix_<id> scratch "
-        f"copies) — got {len(save_calls)}: {save_calls}"
-    )
 
 
-@pytest.mark.usefixtures("torch_dtype_isolation")
-def test_interactive_dub_uses_native_batches(dub_harness, monkeypatch):
-    """Four fresh rows at width two cost two native forwards and no serial ones."""
-    run, model, _job, _job_dir = dub_harness
-    model.use_native_batch = True
-    monkeypatch.setenv("OMNIVOICE_DUB_BATCH_WIDTH", "2")
-    segments = [
-        {"start": i * 1.0, "end": i * 1.0 + 0.8, "text": "0.5:line"}
-        for i in range(4)
-    ]
-
-    _assert_done(run(_dub_body(segments)))
-
-    assert len(model.batch_calls) == 2
-    assert model.calls == []
 
 
 # ── Batch dub — native batches amortize, never duplicate ─────────────────────

@@ -228,42 +228,6 @@ def test_protocols_needing_an_external_program_are_rejected(protocol):
     assert str(excinfo.value) == UNSUPPORTED_DOWNLOAD_DETAIL
 
 
-def test_dub_download_uses_hardened_options_and_the_source_guard(tmp_path, monkeypatch):
-    import yt_dlp
-    from services import dub_pipeline
-
-    seen = {}
-
-    class _FakeYDL:
-        def __init__(self, opts):
-            seen.setdefault("opts", opts)
-            self.pps = []
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *exc):
-            return False
-
-        def add_post_processor(self, pp, when=None):
-            self.pps.append((when, pp))
-
-        def extract_info(self, url, download=True):
-            ((when, pp),) = self.pps
-            assert when == "before_dl"
-            pp.run({"is_live": True, "url": url})
-
-        def prepare_filename(self, info):
-            raise AssertionError("unreachable")
-
-    monkeypatch.setattr(url_safety.socket, "getaddrinfo", lambda *a, **k: [(2, 1, 6, "", ("93.184.215.14", 443))])
-    monkeypatch.setattr(yt_dlp, "YoutubeDL", _FakeYDL)
-    with pytest.raises(Exception, match="live stream"):
-        dub_pipeline.yt_download_sync("https://www.youtube.com/watch?v=live", str(tmp_path))
-    opts = seen["opts"]
-    assert opts["external_downloader"] == {"default": "native"}
-    assert opts["hls_prefer_native"] is True
-    assert url_safety._media_file_hook in opts["progress_hooks"]
 
 
 def test_guarded_ytdlp_subprocess_applies_the_hardening(tmp_path):

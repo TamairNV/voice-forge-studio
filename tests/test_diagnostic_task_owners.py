@@ -277,37 +277,6 @@ def test_sibling_async_units_do_not_share_or_leave_authority(reporter):
     assert len(reporter._files())==2
 
 
-@pytest.mark.parametrize('choice',['unchanged','replacement','later_opt_in'])
-def test_argos_worker_row_failure_keeps_submission_grant(reporter,monkeypatch,choice):
-    import threading
-    from concurrent.futures import ThreadPoolExecutor
-    from test_dub_translate import _install_fake_argos
-    argos=importlib.import_module('api.routers.dub_translate')
-    _install_fake_argos(monkeypatch)
-    reporter.consent(choice!='later_opt_in')
-    entered=threading.Event();release=threading.Event()
-    def translate(*args):
-        try:raise RuntimeError('already observed Argos row failure')
-        except RuntimeError:
-            entered.set();assert release.wait(3);raise
-    monkeypatch.setattr(importlib.import_module('argostranslate.translate'),'translate',translate)
-    with ThreadPoolExecutor(max_workers=1) as pool:
-        monkeypatch.setattr(argos,'_cpu_pool',pool)
-        async def run():
-            task=asyncio.create_task(argos.dub_translate(argos.TranslateRequest(
-                provider='argos',source_lang='en',target_lang='es',quality='fast',segments=[{'id':'fixture','text':'synthetic fixture'}])))
-            try:
-                assert await asyncio.to_thread(entered.wait,2)
-                if choice=='replacement':reporter.consent(False);reporter.consent(True)
-                elif choice=='later_opt_in':reporter.consent(True)
-                release.set();response=await asyncio.wait_for(task,2)
-                assert response['translated'][0]['error']
-            finally:
-                release.set()
-                if not task.done():task.cancel();await asyncio.gather(task,return_exceptions=True)
-        asyncio.run(run())
-    reporter._tick()
-    assert len(reporter._files())==int(choice=='unchanged')
 
 
 @pytest.mark.parametrize('choice',['unchanged','replacement','later_opt_in'])
@@ -364,41 +333,6 @@ def test_cancelled_task_late_exception_does_not_report_failure(reporter,monkeypa
     assert len(reporter._files())==int(not cancelled)
 
 
-@pytest.mark.parametrize('choice',['unchanged','replacement','later_opt_in','consent_during_operation'])
-def test_translation_outer_failure_keeps_awaited_unit_grant(reporter,monkeypatch,choice):
-    from test_dub_translate import _install_fake_argos
-    translation=importlib.import_module('api.routers.dub_translate')
-    _install_fake_argos(monkeypatch)
-    reporter.consent(choice not in ('later_opt_in','consent_during_operation'))
-    async def run():
-        entered=asyncio.Event();failure=asyncio.get_running_loop().create_future()
-        async def cinematic(*args,**kwargs):
-            if choice == 'consent_during_operation':
-                assert importlib.import_module('core.diagnostic_reports').observe_grant() is not None
-            entered.set();return await failure
-        monkeypatch.setattr(translation,'_maybe_cinematic',cinematic)
-        if choice=='consent_during_operation':
-            # Cinematic refinement is still part of the OFF-started
-            # translation operation, even if consent changes between units.
-            real_translate=importlib.import_module('argostranslate.translate').translate
-            def translate(*args):
-                reporter.consent(True)
-                return real_translate(*args)
-            monkeypatch.setattr(importlib.import_module('argostranslate.translate'),'translate',translate)
-        task=asyncio.create_task(translation.dub_translate(translation.TranslateRequest(
-            provider='argos',source_lang='en',target_lang='es',quality='fast',
-            segments=[{'id':'fixture','text':'synthetic fixture'}])))
-        try:
-            await asyncio.wait_for(entered.wait(),2)
-            failure.set_exception(RuntimeError('cinematic fault completed before consent transition'))
-            if choice=='replacement':reporter.consent(False);reporter.consent(True)
-            elif choice=='later_opt_in':reporter.consent(True)
-            response=await asyncio.wait_for(task,2)
-            assert response.status_code==500
-        finally:
-            if not task.done():task.cancel();await asyncio.gather(task,return_exceptions=True)
-    asyncio.run(run());reporter._tick()
-    assert len(reporter._files())==int(choice=='unchanged')
 
 
 @pytest.mark.parametrize('initially_enabled', [False, True])
@@ -469,19 +403,6 @@ def test_openai_upload_keeps_request_owner_for_nested_asr(reporter, monkeypatch,
     asyncio.run(run())
     assert calls == ['upload_changed_consent', 'guarded_asr']
     assert reporter.intake.empty()
-
-
-from test_dub_crash_resume import dub  # noqa: E402,F401
-
-
-@pytest.mark.parametrize('cancelled', [False, True])
-def test_actual_dub_native_exception_after_cancel_stays_local(reporter, dub, cancelled):
-    reporter.consent(True)
-    dub.state['fail_on_call'] = 1
-    dub.state['cancel_after'] = 1 if cancelled else None
-    assert any(event['type'] == 'error' for event in dub.run())
-    reporter._tick()
-    assert len(reporter._files()) == int(not cancelled)
 
 
 @pytest.mark.parametrize("code", ["dub_source_changed", "dub_timing_overflow", "UNKNOWN", "NETWORK_ERROR", ["dub_source_changed"], {"code": "dub_source_changed"}])

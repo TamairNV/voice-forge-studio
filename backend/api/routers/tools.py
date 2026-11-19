@@ -177,46 +177,6 @@ def list_tts_plugins():
     return list_plugins()
 
 
-# ── Video context analysis ─────────────────────────────────────────────────
-
-
-@router.post("/tools/video-context/{job_id}", dependencies=[Depends(require_admin)])
-async def analyse_video_context(job_id: str):
-    """Analyse the source video's visual context for dubbing decisions.
-
-    Returns per-segment mood, brightness, and complexity cues that
-    can be used as TTS instruct hints.
-    """
-    import os
-    from api.routers.dub_core import _get_job
-    from core.config import DUB_DIR
-    from services.video_context import analyse_video
-
-    if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", job_id or ""):
-        raise HTTPException(status_code=400, detail="Invalid job id")
-    try:
-        job_dir = resolve_within(DUB_DIR, job_id)
-    except UnsafePath as exc:
-        raise HTTPException(status_code=400, detail="Invalid job id") from exc
-    job = _get_job(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-
-    video_path = resolve_within(DUB_DIR, job_dir / "source.mp4")
-    if not video_path.is_file():
-        try:
-            video_path = resolve_within(DUB_DIR, job.get("video_path", ""))
-        except UnsafePath:
-            return {"error": "Source video not found", "segments": {}}
-
-    if not video_path.is_file():
-        return {"error": "Source video not found", "segments": {}}
-
-    segments = job.get("segments") or []
-    ctx = await analyse_video(str(video_path), segments)
-    return ctx.to_dict()
-
-
 # Workflow audio is already synthetic. Re-mark after processing through the
 # existing chokepoint rather than routing it through human mic cleanup.
 def _decode_workflow_audio(data: bytes):

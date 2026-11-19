@@ -46,14 +46,6 @@ def _import_srt(monkeypatch, data: bytes) -> dict:
         dub_core._dub_jobs.pop(job_id, None)
 
 
-@pytest.mark.parametrize("encoding", sorted(_ENCODINGS))
-def test_import_srt_reads_every_common_encoding(monkeypatch, encoding):
-    result = _import_srt(monkeypatch, _ENCODINGS[encoding](_SRT))
-
-    assert [s["text"] for s in result["segments"]] == [
-        "It’s café time",
-        "Second — line",
-    ]
 
 
 @pytest.mark.parametrize("encoding", sorted(_ENCODINGS))
