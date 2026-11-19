@@ -7,7 +7,6 @@ import re
 import subprocess
 from pathlib import Path
 
-import pytest
 from packaging.version import Version
 
 
@@ -46,16 +45,6 @@ def test_waveform_stroke_is_never_filled() -> None:
         assert stroke and 'fill="none"' in stroke.group(0), svg
 
 
-@pytest.mark.parametrize("event", ("push", "pull_request"))
-def test_canonical_logo_changes_run_mobile_builds(event: str) -> None:
-    from fnmatch import fnmatchcase
-
-    import yaml
-
-    workflow = yaml.load((ROOT / ".github/workflows/mobile.yml").read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
-    assert any(fnmatchcase("docs/logo.svg", pattern) for pattern in workflow["on"][event]["paths"])
-
-
 def test_python_package_metadata_points_to_voicestudio() -> None:
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     assert 'Homepage = "https://github.com/debpalash/VoiceStudio"' in pyproject
@@ -84,26 +73,7 @@ def test_engine_help_names_the_app_not_the_upstream_model() -> None:
 
 def test_compatibility_identifiers_stay_stable() -> None:
     package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
-    assert package["name"] == "omnivoice-studio-monorepo"
+    assert package["name"] == "voice-forge-studio"
     assert 'name = "omnivoice"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     app_config = json.loads((ROOT / "config/app.json").read_text(encoding="utf-8"))
     assert app_config["appId"] == "com.voicestudio.desktop"
-
-
-def test_active_source_launch_is_electron_and_web_ports_clean_quietly() -> None:
-    scripts = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))["scripts"]
-    assert scripts["dev"] == "bun run --cwd electron dev"
-    assert not any("tauri" in name for name in scripts)
-    command = scripts["predev:web"]
-    assert command.endswith("bun scripts/clear-dev-ports.mjs")
-    assert "|| true" not in command
-
-
-def test_electron_launch_preserves_an_existing_backend():
-    scripts = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))["scripts"]
-    for name in ("predev", "predesktop"):
-        assert "clear-dev-ports" not in scripts[name]
-        assert "desktop-runtime-preflight" not in scripts[name]
-    assert scripts["dev"] == "bun run --cwd electron dev"
-    assert scripts["desktop-prod:run"] == "bun run start"
-    assert scripts["start"] == "bun run --cwd electron start"

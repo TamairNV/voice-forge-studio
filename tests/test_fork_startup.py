@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-REMOVED_APP_DIRS = ["electron", "mobile", "native", "frontend"]
+REMOVED_APP_DIRS = ["electron", "mobile", "native", "frontend", "store", "fastlane", "snap", "packaging", "cli", "skills"]
 
 
 def test_app_dirs_gone():
