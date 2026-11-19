@@ -46,6 +46,7 @@ def live_routes():
 # Features that MUST stay reachable. Each entry is "METHOD /path" exactly as the
 # snapshot encodes it (the snapshot diff covers the full method set).
 _CRITICAL = [
+    "GET /personalities",  # fork: MCP
     "GET /health", "GET /system/info", "GET /model/status",
     "POST /generate", "GET /history",
     "GET /profiles", "POST /profiles", "PUT /profiles/{profile_id}",
