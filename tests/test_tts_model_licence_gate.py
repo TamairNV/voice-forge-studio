@@ -215,6 +215,7 @@ def test_get_model_revocation_stops_a_resident_model(store, mm, monkeypatch, ma)
 
 
 def test_preload_skips_quietly_when_unaccepted(store, mm, monkeypatch, caplog):
+    monkeypatch.setenv("OMNIVOICE_TTS_BACKEND", "omnivoice")
     monkeypatch.setattr(mm, "model", None)
     caps = importlib.import_module("core.device_caps")
 

@@ -83,8 +83,6 @@ def test_gate_coverage_mirrors_the_runtime_paths(models):
     covers = models._engine_gate_covers_all_rows
     # Engines that ship a fixed model set gate every recorded row.
     assert covers("omnivoice") is True
-    assert covers("omnivoice-subprocess") is True
-    assert covers("confucius4-tts") is True
     # Preference-dependent TTS and per-model ASR gates check only what runs.
     assert covers("mlx-audio") is False
     assert covers("faster-whisper") is False

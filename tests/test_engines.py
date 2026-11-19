@@ -15,9 +15,8 @@ from services import tts_backend, asr_backend, llm_backend
 def test_tts_registry_lists_all_backends():
     rows = tts_backend.list_backends()
     ids = {r["id"] for r in rows}
-    # Core set must exist; optional engines (kittentts, mlx-audio) may be
-    # added as platform support lands — only assert the baseline.
-    assert {"omnivoice", "voxcpm2", "moss-tts-nano"}.issubset(ids)
+    # Core set must exist; optional engines may be added as platform support lands.
+    assert {"voxcpm2", "cosyvoice"}.issubset(ids)
     for r in rows:
         assert set(r) >= {"id", "display_name", "available", "reason"}
         evidence = r["execution_evidence"]
@@ -51,20 +50,6 @@ def test_tts_voxcpm2_upgrade_hint_reaches_list_backends(monkeypatch):
     assert 'pip install --upgrade "voxcpm>=2.0.3"' in entry["hint"]
 
 
-def test_tts_moss_nano_unavailable_message_points_to_install():
-    ok, msg = tts_backend.MossTTSNanoBackend.is_available()
-    if not ok:
-        # Either transformers is missing or the moss_tts_nano package itself.
-        assert "moss_tts_nano" in msg or "transformers" in msg
-
-
-def test_tts_moss_nano_language_count():
-    # Non-redundant niche: 20 langs including Arabic/Hebrew/Persian/Korean.
-    langs = tts_backend.MossTTSNanoBackend().supported_languages
-    assert len(langs) == 20
-    assert {"ar", "he", "fa", "ko", "tr"}.issubset(set(langs))
-
-
 def test_tts_active_backend_env_override(monkeypatch):
     monkeypatch.setenv("OMNIVOICE_TTS_BACKEND", "voxcpm2")
     assert tts_backend.active_backend_id() == "voxcpm2"
@@ -75,133 +60,12 @@ def test_tts_active_backend_env_override(monkeypatch):
     assert tts_backend.active_backend_id() == "omnivoice"
 
 
-# ── #919: sherpa-onnx gates on OMNIVOICE_SHERPA_MODEL ────────────────────────
-# sherpa-onnx ships no bundled model, so with the package installed but no model
-# dir configured it must report unavailable-with-a-reason — not "ready" and then
-# a generate-time config error the OOM catch-all mislabeled. A fake module makes
-# these deterministic whether or not sherpa-onnx is installed on CI.
-
-
-def test_tts_sherpa_unavailable_without_model_env(monkeypatch):
-    monkeypatch.setitem(sys.modules, "sherpa_onnx", types.ModuleType("sherpa_onnx"))
-    monkeypatch.delenv("OMNIVOICE_SHERPA_MODEL", raising=False)
-    ok, msg = tts_backend.SherpaOnnxBackend.is_available()
-    assert ok is False
-    assert "OMNIVOICE_SHERPA_MODEL" in msg   # names the exact env var
-    assert "model.onnx" in msg               # says what to point it at
-
-
-def test_tts_sherpa_unavailable_when_model_dir_lacks_onnx(monkeypatch, tmp_path):
-    monkeypatch.setitem(sys.modules, "sherpa_onnx", types.ModuleType("sherpa_onnx"))
-    monkeypatch.setenv("OMNIVOICE_SHERPA_MODEL", str(tmp_path))  # empty dir
-    ok, msg = tts_backend.SherpaOnnxBackend.is_available()
-    assert ok is False
-    assert "model.onnx" in msg
-
-
-def test_tts_sherpa_available_when_model_env_points_at_model(monkeypatch, tmp_path):
-    monkeypatch.setitem(sys.modules, "sherpa_onnx", types.ModuleType("sherpa_onnx"))
-    (tmp_path / "model.onnx").write_bytes(b"")
-    monkeypatch.setenv("OMNIVOICE_SHERPA_MODEL", str(tmp_path))
-    ok, _msg = tts_backend.SherpaOnnxBackend.is_available()
-    assert ok is True
-
-
-def _recording_sherpa_module(captured):
-    module = types.ModuleType("sherpa_onnx")
-
-    def remember_vits(**kwargs):
-        captured.update(kwargs)
-        return kwargs
-
-    module.OfflineTtsVitsModelConfig = remember_vits
-    module.OfflineTtsModelConfig = lambda **kwargs: kwargs
-    module.OfflineTtsConfig = lambda **kwargs: kwargs
-    module.OfflineTts = lambda config: types.SimpleNamespace(config=config, sample_rate=22050)
-    return module
-
-
-def test_tts_sherpa_accepts_voice_named_piper_model(monkeypatch, tmp_path):
-    monkeypatch.setitem(sys.modules, "sherpa_onnx", types.ModuleType("sherpa_onnx"))
-    (tmp_path / "en_US-voice.onnx").write_bytes(b"")
-    (tmp_path / "en_US-voice.onnx.json").write_text("{}", encoding="utf-8")
-    (tmp_path / "tokens.txt").write_text("tokens", encoding="utf-8")
-    (tmp_path / "espeak-ng-data").mkdir()
-    monkeypatch.setenv("OMNIVOICE_SHERPA_MODEL", str(tmp_path))
-
-    ok, _reason = tts_backend.SherpaOnnxBackend.is_available()
-
-    assert ok is True
-
-
-def test_tts_sherpa_rejects_ambiguous_onnx_directory(monkeypatch, tmp_path):
-    monkeypatch.setitem(sys.modules, "sherpa_onnx", types.ModuleType("sherpa_onnx"))
-    (tmp_path / "first.onnx").write_bytes(b"")
-    (tmp_path / "second.ONNX").write_bytes(b"")
-    monkeypatch.setenv("OMNIVOICE_SHERPA_MODEL", str(tmp_path))
-
-    ok, reason = tts_backend.SherpaOnnxBackend.is_available()
-
-    assert ok is False
-    assert "model.onnx" in reason
-
-
-def test_tts_sherpa_resolver_prioritizes_conventional_filename(tmp_path):
-    expected = tmp_path / "model.onnx"
-    expected.write_bytes(b"")
-    (tmp_path / "alternate.onnx").write_bytes(b"")
-
-    assert tts_backend._sherpa_model_file(str(tmp_path)) == str(expected)
-
-
-def test_tts_sherpa_loads_piper_phonemizer_data(monkeypatch, tmp_path):
-    captured = {}
-    monkeypatch.setitem(sys.modules, "sherpa_onnx", _recording_sherpa_module(captured))
-    voice = tmp_path / "sample-voice.onnx"
-    voice.write_bytes(b"")
-    (tmp_path / "tokens.txt").write_text("tokens", encoding="utf-8")
-    data_dir = tmp_path / "espeak-ng-data"
-    data_dir.mkdir()
-    monkeypatch.setenv("OMNIVOICE_SHERPA_MODEL", str(tmp_path))
-
-    tts_backend.SherpaOnnxBackend()._ensure_loaded()
-
-    assert captured["model"] == str(voice)
-    assert captured["data_dir"] == str(data_dir)
-    assert "lexicon" not in captured
-
-
-def test_tts_sherpa_loads_lexicon_without_obsolete_dictionary(monkeypatch, tmp_path):
-    captured = {}
-    monkeypatch.setitem(sys.modules, "sherpa_onnx", _recording_sherpa_module(captured))
-    model = tmp_path / "model.onnx"
-    model.write_bytes(b"")
-    (tmp_path / "tokens.txt").write_text("tokens", encoding="utf-8")
-    lexicon = tmp_path / "lexicon.txt"
-    lexicon.write_text("word phones", encoding="utf-8")
-    (tmp_path / "dict").mkdir()
-    monkeypatch.setenv("OMNIVOICE_SHERPA_MODEL", str(tmp_path))
-
-    tts_backend.SherpaOnnxBackend()._ensure_loaded()
-
-    assert captured["model"] == str(model)
-    assert captured["lexicon"] == str(lexicon)
-    assert "dict_dir" not in captured
-    assert "data_dir" not in captured
-
-
-def test_tts_sherpa_setup_snippet_registered():
-    # The Compat Matrix's copy-paste setup line must exist for the now
-    # path-gated engine (parity with Confucius4/dots/MOSS).
-    assert "OMNIVOICE_SHERPA_MODEL" in tts_backend._SETUP_SNIPPETS["sherpa-onnx"]
-
-
 def test_tts_active_backend_prefs_fallback(monkeypatch, tmp_path):
     from core import prefs as _prefs
     monkeypatch.setattr(_prefs, "_PREFS_PATH", str(tmp_path / "prefs.json"))
     monkeypatch.delenv("OMNIVOICE_TTS_BACKEND", raising=False)
-    _prefs.set_("tts_backend", "moss-tts-nano")
-    assert tts_backend.active_backend_id() == "moss-tts-nano"
+    _prefs.set_("tts_backend", "cosyvoice")
+    assert tts_backend.active_backend_id() == "cosyvoice"
     # Env var must beat prefs.
     monkeypatch.setenv("OMNIVOICE_TTS_BACKEND", "voxcpm2")
     assert tts_backend.active_backend_id() == "voxcpm2"
@@ -210,7 +74,6 @@ def test_tts_active_backend_prefs_fallback(monkeypatch, tmp_path):
 def test_tts_sample_rate_per_backend():
     assert tts_backend.OmniVoiceBackend().sample_rate == 24000
     assert tts_backend.VoxCPM2Backend().sample_rate == 48000
-    assert tts_backend.MossTTSNanoBackend().sample_rate == 48000
 
 
 def test_tts_unknown_backend_raises():
@@ -230,26 +93,26 @@ def test_mlx_audio_model_id_resolves_via_prefs(monkeypatch, tmp_path):
     from core import prefs as _prefs
     monkeypatch.setattr(_prefs, "_PREFS_PATH", str(tmp_path / "prefs.json"))
     monkeypatch.delenv("OMNIVOICE_MLX_AUDIO_MODEL", raising=False)
-    _prefs.set_("mlx_audio_model_id", "outetts")
+    _prefs.set_("mlx_audio_model_id", "dia")
     be = tts_backend.MLXAudioBackend()
-    assert be._model_id == tts_backend.MLXAudioBackend.CURATED_MODELS["outetts"]
+    assert be._model_id == tts_backend.MLXAudioBackend.CURATED_MODELS["dia"]
 
 
 def test_mlx_audio_model_id_env_overrides_prefs(monkeypatch, tmp_path):
     from core import prefs as _prefs
     monkeypatch.setattr(_prefs, "_PREFS_PATH", str(tmp_path / "prefs.json"))
-    _prefs.set_("mlx_audio_model_id", "outetts")
+    _prefs.set_("mlx_audio_model_id", "dia")
     monkeypatch.setenv("OMNIVOICE_MLX_AUDIO_MODEL", "csm")
     be = tts_backend.MLXAudioBackend()
     assert be._model_id == tts_backend.MLXAudioBackend.CURATED_MODELS["csm"]
 
 
-def test_mlx_audio_model_id_defaults_to_kokoro(monkeypatch, tmp_path):
+def test_mlx_audio_model_id_defaults_to_voxcpm2(monkeypatch, tmp_path):
     from core import prefs as _prefs
     monkeypatch.setattr(_prefs, "_PREFS_PATH", str(tmp_path / "prefs.json"))
     monkeypatch.delenv("OMNIVOICE_MLX_AUDIO_MODEL", raising=False)
     be = tts_backend.MLXAudioBackend()
-    assert be._model_id == tts_backend.MLXAudioBackend.CURATED_MODELS["kokoro"]
+    assert be._model_id == tts_backend.MLXAudioBackend.CURATED_MODELS["voxcpm2"]
 
 
 def test_get_active_tts_backend_reconstructs_on_mlx_model_switch(monkeypatch, tmp_path):
@@ -269,10 +132,10 @@ def test_get_active_tts_backend_reconstructs_on_mlx_model_switch(monkeypatch, tm
         # Same instance on a repeat call with nothing changed (still cached).
         assert tts_backend.get_active_tts_backend() is be1
 
-        _prefs.set_("mlx_audio_model_id", "outetts")
+        _prefs.set_("mlx_audio_model_id", "dia")
         be2 = tts_backend.get_active_tts_backend()
         assert be2 is not be1
-        assert be2._model_id == tts_backend.MLXAudioBackend.CURATED_MODELS["outetts"]
+        assert be2._model_id == tts_backend.MLXAudioBackend.CURATED_MODELS["dia"]
     finally:
         tts_backend.reset_active_backend()
         _prefs.set_("tts_backend", "omnivoice")
@@ -734,130 +597,6 @@ def test_mlx_audio_generate_rejects_language_outside_curated_model_set():
         backend.generate("hello", language="Dutch", instruct="a warm narrator")
 
 
-@pytest.mark.parametrize("sample_rate", [24000, 48000])
-def test_outetts_reference_uses_shared_decoder_and_downmixes(monkeypatch, sample_rate):
-    import numpy as np
-    import torch
-    from services import audio_io
-
-    core = types.ModuleType("mlx.core")
-    core.array = np.asarray
-    mlx = types.ModuleType("mlx")
-    mlx.core = core
-    utils = types.ModuleType("mlx_audio.utils")
-    resampled = []
-
-    def resample(audio, source_rate, target_rate, axis):
-        resampled.append((source_rate, target_rate, axis))
-        return audio[::2]
-
-    utils.resample_audio = resample
-    monkeypatch.setitem(sys.modules, "mlx", mlx)
-    monkeypatch.setitem(sys.modules, "mlx.core", core)
-    monkeypatch.setitem(sys.modules, "mlx_audio.utils", utils)
-    decoded = []
-
-    def load(path):
-        decoded.append(path)
-        return torch.tensor([[0.0, 0.2, 0.4, 0.6], [0.2, 0.4, 0.6, 0.8]]), sample_rate
-
-    monkeypatch.setattr(audio_io, "load_audio", load)
-    result = tts_backend._outetts_reference_array("compressed-reference.m4a")
-    expected = [0.1, 0.3, 0.5, 0.7] if sample_rate == 24000 else [0.1, 0.5]
-    np.testing.assert_allclose(result, expected, atol=1e-7)
-    assert result.dtype == np.float32
-    assert decoded == ["compressed-reference.m4a"]
-    assert resampled == ([] if sample_rate == 24000 else [(48000, 24000, 0)])
-
-
-def _outetts_backend(seen):
-    backend = tts_backend.MLXAudioBackend()
-    backend._model_id = backend.CURATED_MODELS["outetts"]
-    backend._ensure_loaded = lambda: None
-
-    def _fake_generate(**kw):
-        seen.update(kw)
-        return iter([types.SimpleNamespace(audio=[0.0, 0.0])])
-
-    backend._model = types.SimpleNamespace(generate=_fake_generate)
-    return backend
-
-
-def test_mlx_audio_outetts_receives_a_saved_speaker_not_the_clip(monkeypatch):
-    # mlx-audio crashes on a file path and downloads Whisper in the worker (#2700).
-    monkeypatch.setattr(tts_backend, "_outetts_speaker_file", lambda path: f"{path}.json")
-    seen = {}
-    _outetts_backend(seen).generate("hello", ref_audio="/tmp/ref.wav")
-    assert seen["voice"] == "/tmp/ref.wav.json"
-    assert "ref_audio" not in seen
-
-
-def _fake_outetts_processor(monkeypatch, built):
-    import json
-
-    module = types.ModuleType("mlx_audio.tts.models.outetts.audio_processor")
-
-    class AudioProcessor:
-        def create_speaker_from_whisper(self, audio, whisper_model):
-            built.append((audio, whisper_model))
-            return {"text": "hi", "words": [], "global_features": {}}
-
-        def save_speaker(self, speaker, path):
-            with open(path, "w") as f:
-                json.dump(speaker, f)
-
-    module.AudioProcessor = AudioProcessor
-    monkeypatch.setitem(sys.modules, module.__name__, module)
-    monkeypatch.setattr(tts_backend, "_outetts_reference_array", lambda path: ("array", path))
-
-
-def test_outetts_speaker_is_built_once_from_the_local_whisper(monkeypatch, tmp_path):
-    built = []
-    _fake_outetts_processor(monkeypatch, built)
-    monkeypatch.setattr(tts_backend, "_outetts_speaker_dir", lambda: str(tmp_path))
-    monkeypatch.setattr(tts_backend, "_outetts_whisper_dir", lambda: "/local/whisper")
-    ref = tmp_path / "ref.wav"
-    ref.write_bytes(b"a")
-    first = tts_backend._outetts_speaker_file(str(ref))
-    assert tts_backend._outetts_speaker_file(str(ref)) == first
-    assert built == [(("array", str(ref)), "/local/whisper")]
-    assert sorted(p.name for p in tmp_path.iterdir()) == sorted(["ref.wav", os.path.basename(first)])
-
-    ref.write_bytes(b"changed clip")
-    assert tts_backend._outetts_speaker_file(str(ref)) != first
-    assert len(built) == 2
-
-
-def test_outetts_missing_whisper_fails_fast_without_downloading(monkeypatch, tmp_path):
-    import huggingface_hub
-
-    calls = []
-
-    def snapshot(repo, **kw):
-        calls.append((repo, kw))
-        raise huggingface_hub.errors.LocalEntryNotFoundError("not cached")
-
-    monkeypatch.setattr(huggingface_hub, "snapshot_download", snapshot)
-    monkeypatch.setattr(tts_backend, "_outetts_speaker_dir", lambda: str(tmp_path))
-    ref = tmp_path / "ref.wav"
-    ref.write_bytes(b"a")
-    with pytest.raises(RuntimeError, match="Model Catalogue"):
-        tts_backend._outetts_speaker_file(str(ref))
-    from services.hf_revisions import revision_for
-
-    repo = tts_backend._OUTETTS_WHISPER_REPO
-    assert calls == [(repo, {"revision": revision_for(repo), "local_files_only": True})]
-    assert [p.name for p in tmp_path.iterdir()] == ["ref.wav"]
-
-
-def test_outetts_whisper_is_in_the_catalogue():
-    import yaml
-
-    with open(os.path.join("backend", "config", "models.yaml")) as f:
-        repos = {m["repo_id"] for m in yaml.safe_load(f)["models"]}
-    assert tts_backend._OUTETTS_WHISPER_REPO in repos
-
-
 def test_mlx_audio_eos_ids_accept_single_int_from_transformers_5(monkeypatch):
     import sys
 
@@ -884,10 +623,10 @@ def test_cached_engine_follows_a_model_switch(monkeypatch):
     unloaded = []
     first.unload = lambda: unloaded.append(True)
     assert tts_backend.get_engine_instance(tts_backend.MLXAudioBackend) is first
-    monkeypatch.setenv("OMNIVOICE_MLX_AUDIO_MODEL", "outetts")
+    monkeypatch.setenv("OMNIVOICE_MLX_AUDIO_MODEL", "dia")
     second = tts_backend.get_engine_instance(tts_backend.MLXAudioBackend)
     assert second is not first
-    assert second.model_identity() == tts_backend.MLXAudioBackend.CURATED_MODELS["outetts"]
+    assert second.model_identity() == tts_backend.MLXAudioBackend.CURATED_MODELS["dia"]
     assert unloaded == [True]
 
 
@@ -907,43 +646,6 @@ def test_model_switch_never_unloads_an_engine_mid_job(monkeypatch):
     assert second is not first
 
 
-def test_melotts_names_its_missing_text_package(monkeypatch):
-    import sys
-
-    monkeypatch.setitem(sys.modules, "g2p_en", None)  # import raises ImportError
-    with pytest.raises(RuntimeError, match="g2p_en"):
-        tts_backend._ensure_melotts_text_frontend()
-
-
-def test_melotts_reports_missing_nltk_data_without_downloading(monkeypatch, tmp_path):
-    import sys
-
-    from importlib.machinery import ModuleSpec
-    fake_g2p = types.ModuleType("g2p_en")
-    fake_g2p.__spec__ = ModuleSpec("g2p_en", loader=None)
-    monkeypatch.setitem(sys.modules, "g2p_en", fake_g2p)
-    downloads = []
-
-    def _find(lookup):
-        if not any(lookup.endswith(name) for name, _ in downloads):
-            raise LookupError(lookup)
-
-    fake_nltk = types.SimpleNamespace(
-        data=types.SimpleNamespace(path=[], find=_find),
-        download=lambda package, download_dir, quiet: downloads.append((package, download_dir)) or True,
-    )
-    monkeypatch.setitem(sys.modules, "nltk", fake_nltk)
-    monkeypatch.setattr("core.config.DATA_DIR", str(tmp_path))
-    with pytest.raises(RuntimeError, match="nltk.downloader"):
-        tts_backend._ensure_melotts_text_frontend()
-    assert downloads == []
-    assert fake_nltk.data.path[0] == str(tmp_path / "nltk_data")
-    fake_nltk.data.find = lambda lookup: object()
-    tts_backend._ensure_melotts_text_frontend()
-    assert downloads == []
-
-
-
 def test_mlx_audio_dia_receives_speaker_tagged_text():
     backend = tts_backend.MLXAudioBackend()
     backend._model_id = backend.CURATED_MODELS["dia"]
@@ -960,34 +662,6 @@ def test_mlx_audio_dia_receives_speaker_tagged_text():
     assert seen["ref_text"] == "[S1] Earlier words."
     backend.generate("[S1] Hi. [S2] Hey.")
     assert seen["text"] == "[S1] Hi. [S2] Hey."
-
-
-def test_outetts_missing_reference_is_an_input_error(monkeypatch, tmp_path):
-    monkeypatch.setattr(tts_backend, "_outetts_speaker_dir", lambda: str(tmp_path))
-    with pytest.raises(tts_backend.TTSInputError):
-        tts_backend._outetts_speaker_file(str(tmp_path / "gone.wav"))
-
-
-def test_outetts_concurrent_calls_build_the_speaker_once(monkeypatch, tmp_path):
-    import threading
-
-    built = []
-    _fake_outetts_processor(monkeypatch, built)
-    monkeypatch.setattr(tts_backend, "_outetts_speaker_dir", lambda: str(tmp_path))
-    monkeypatch.setattr(tts_backend, "_outetts_whisper_dir", lambda: "/local/whisper")
-    ref = tmp_path / "ref.wav"
-    ref.write_bytes(b"a")
-    results = []
-    threads = [
-        threading.Thread(target=lambda: results.append(tts_backend._outetts_speaker_file(str(ref))))
-        for _ in range(4)
-    ]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join()
-    assert len(built) == 1 and len(set(results)) == 1
-    assert not [p for p in tmp_path.iterdir() if p.name.endswith(".tmp")]
 
 
 @pytest.mark.parametrize("local", [False, True])

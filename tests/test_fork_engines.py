@@ -71,3 +71,13 @@ def test_env_override_wins(monkeypatch):
     _with_saved_engine(monkeypatch, "cosyvoice")
     monkeypatch.setenv("OMNIVOICE_TTS_BACKEND", "voxcpm2")
     assert tts_backend.active_backend_id() == "voxcpm2"
+
+
+def test_mlx_audio_defaults_to_voxcpm2():
+    from services.tts_backend import MLXAudioBackend, _MLX_AUDIO_MODEL_LABELS
+    assert MLXAudioBackend.DEFAULT_MODEL_KEY == "voxcpm2"
+    assert MLXAudioBackend.CURATED_MODELS["voxcpm2"] == "mlx-community/VoxCPM2-8bit"
+    for key in ("melotts", "outetts"):
+        assert key not in MLXAudioBackend.CURATED_MODELS
+        assert key not in MLXAudioBackend.CURATED_MODEL_LANGUAGES
+        assert key not in _MLX_AUDIO_MODEL_LABELS

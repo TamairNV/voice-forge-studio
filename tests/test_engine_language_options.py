@@ -6,10 +6,7 @@ def tts():
     return tts_backend
 
 @pytest.mark.parametrize('engine,allowed,rejected', [
-    ('kittentts', 'english', 'polish'),
-    ('audiocpp', 'chinese', 'polish'),
     ('indextts2', 'spanish', 'polish'),
-    ('confucius4-tts', 'french', 'polish'),
 ])
 def test_finite_language_options_without_loading_models(engine, allowed, rejected, monkeypatch, tts):
     monkeypatch.delenv('OMNIVOICE_INDEXTTS_DIR', raising=False)
@@ -104,18 +101,18 @@ def test_unknown_engine_does_not_break_inventory(tts):
 
 def test_active_engine_inventory_carries_language_choices(monkeypatch, tts):
     from api.routers import engines
-    monkeypatch.setattr(tts, 'active_backend_id', lambda: 'kittentts')
+    monkeypatch.setattr(tts, 'active_backend_id', lambda: 'indextts2')
     monkeypatch.setattr(tts, 'list_backends', lambda: [
-        {'id': 'kittentts', 'available': True},
+        {'id': 'indextts2', 'available': True},
         {'id': 'omnivoice', 'available': False},
     ])
     response = engines._family_payload('tts', tts)
-    assert 'english' in response['backends'][0]['supported_language_names']
+    assert 'spanish' in response['backends'][0]['supported_language_names']
     assert 'polish' not in response['backends'][0]['supported_language_names']
     assert 'supported_language_names' not in response['backends'][1]
 
 
-@pytest.mark.parametrize('engine', ['indextts2', 'omnivoice-subprocess'])
+@pytest.mark.parametrize('engine', ['indextts2'])
 def test_metadata_releases_temporary_sidecar_exit_handlers(monkeypatch, engine, tts):
     import atexit
     callbacks = []
@@ -130,9 +127,7 @@ def test_metadata_releases_temporary_sidecar_exit_handlers(monkeypatch, engine, 
     ('csm', 'english', 'french'),
     ('dia', 'english', 'german'),
     ('chatterbox', 'english', 'spanish'),
-    ('melotts', 'english', 'japanese'),
     ('qwen3-tts', 'korean', 'bengali'),
-    ('outetts', 'bengali', 'hindi'),
     ('voxcpm2', 'thai', 'bengali'),
 ])
 def test_curated_mlx_models_declare_documented_languages(model, allowed, rejected, monkeypatch, tts):

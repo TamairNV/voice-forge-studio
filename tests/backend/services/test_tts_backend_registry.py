@@ -248,7 +248,7 @@ def test_mlx_audio_curated_models_roster(registry_sandbox):
     always silently defaulting to Kokoro."""
     out = {entry["id"]: entry for entry in list_backends()}
     entry = out["mlx-audio"]
-    assert entry["active_model_id"] == "kokoro"  # DEFAULT_MODEL_KEY, no prefs set
+    assert entry["active_model_id"] == "voxcpm2"  # DEFAULT_MODEL_KEY, no prefs set
     keys = {m["key"] for m in entry["curated_models"]}
     assert keys == set(tts_backend.MLXAudioBackend.CURATED_MODELS)
     for m in entry["curated_models"]:
@@ -261,9 +261,9 @@ def test_mlx_audio_active_model_id_reflects_prefs(registry_sandbox, monkeypatch,
     from core import prefs as _prefs
     monkeypatch.setattr(_prefs, "_PREFS_PATH", str(tmp_path / "prefs.json"))
     monkeypatch.delenv("OMNIVOICE_MLX_AUDIO_MODEL", raising=False)
-    _prefs.set_("mlx_audio_model_id", "outetts")
+    _prefs.set_("mlx_audio_model_id", "csm")
     out = {entry["id"]: entry for entry in list_backends()}
-    assert out["mlx-audio"]["active_model_id"] == "outetts"
+    assert out["mlx-audio"]["active_model_id"] == "csm"
 
 
 def test_curated_models_not_present_on_other_backends(registry_sandbox):

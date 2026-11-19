@@ -2551,49 +2551,6 @@ def _harden_mlx_audio_eos_ids() -> None:
     lm_generate._eos_ids = _eos_ids
 
 
-#: NLTK data MeloTTS English's g2p_en front end looks up on every call.
-_MELOTTS_NLTK_RESOURCES = (
-    ("taggers/averaged_perceptron_tagger_eng", "averaged_perceptron_tagger_eng"),
-    ("taggers/averaged_perceptron_tagger.zip", "averaged_perceptron_tagger"),
-    ("corpora/cmudict.zip", "cmudict"),
-)
-
-
-def _ensure_melotts_text_frontend() -> None:
-    """Validate optional text resources locally, before importing g2p_en.
-
-    g2p_en downloads its legacy NLTK tagger and dictionary at import time.
-    Check those plus the modern English tagger first; generation must never
-    acquire resources behind the user's back.
-    """
-    import importlib.util
-    from pathlib import Path
-
-    if importlib.util.find_spec("g2p_en") is None:
-        raise RuntimeError(
-            "MeloTTS English needs the optional 'g2p_en' text package. "
-            "Pick another MLX-Audio model or install it explicitly into "
-            "VoiceStudio's Python environment (uv pip install g2p_en)."
-        )
-    import nltk
-    from core.config import DATA_DIR
-
-    target = Path(DATA_DIR) / "nltk_data"
-    if str(target) not in nltk.data.path:
-        nltk.data.path.insert(0, str(target))
-    for lookup, package in _MELOTTS_NLTK_RESOURCES:
-        try:
-            nltk.data.find(lookup)
-        except LookupError as exc:
-            raise RuntimeError(
-                f"MeloTTS needs the local NLTK '{package}' data. "
-                "Install its resources explicitly in VoiceStudio's Python "
-                "environment: python -m nltk.downloader "
-                "averaged_perceptron_tagger averaged_perceptron_tagger_eng cmudict. "
-                "Generation does not download these resources."
-            ) from exc
-
-
 def _dia_tagged(text: str) -> str:
     """Prefix a single-speaker ``[S1]`` tag unless the text already names speakers."""
     stripped = text.strip()
@@ -2634,119 +2591,21 @@ def _mlx_audio_installed_snapshot(repo_id: str) -> str:
         ) from exc
 
 
-_OUTETTS_CODEC_SAMPLE_RATE = 24000  # mlx-audio's DAC speech codec
-
-
-def _outetts_reference_array(path: str):
-    """Mono float32 ``mx.array`` at the OuteTTS codec rate, as its in-memory branch expects."""
-    import mlx.core as mx
-    import numpy as np
-    from services.audio_io import load_audio
-    from mlx_audio.utils import resample_audio
-
-    audio, sample_rate = load_audio(path)
-    mono = audio.mean(dim=0).detach().cpu().numpy()
-    if sample_rate != _OUTETTS_CODEC_SAMPLE_RATE:
-        mono = resample_audio(mono, sample_rate, _OUTETTS_CODEC_SAMPLE_RATE, axis=0)
-    return mx.array(np.asarray(mono, dtype=np.float32))
-
-
-#: The Whisper checkpoint mlx-audio's OuteTTS transcribes a reference with.
-_OUTETTS_WHISPER_REPO = "mlx-community/whisper-large-v3-turbo-asr-fp16"
-
-
-def _outetts_whisper_dir() -> str:
-    """Local snapshot of OuteTTS's speaker-building Whisper, never downloaded here.
-
-    mlx-audio resolves it with ``snapshot_download`` from inside the GPU-pool
-    worker, where the download deadlocked for the full 300 s watchdog (#2700).
-    Generation must not fetch models anyway, so a missing checkpoint fails
-    fast and names the catalogue entry that installs it.
-    """
-    from huggingface_hub import snapshot_download
-    from services.hf_revisions import revision_for
-
-    try:
-        return snapshot_download(
-            _OUTETTS_WHISPER_REPO,
-            revision=revision_for(_OUTETTS_WHISPER_REPO),
-            local_files_only=True,
-        )
-    except Exception as exc:
-        raise RuntimeError(
-            "OuteTTS voice cloning needs its Whisper model to read the reference "
-            f"clip. Install \"{_OUTETTS_WHISPER_REPO}\" from the Model Catalogue, "
-            "then generate again."
-        ) from exc
-
-
-def _outetts_speaker_dir() -> str:
-    from core.config import DATA_DIR
-
-    return os.path.join(DATA_DIR, "outetts_speakers")
-
-
-_outetts_speaker_lock = threading.Lock()
-
-
-def _outetts_speaker_file(ref_audio: str) -> str:
-    """Path to an OuteTTS speaker profile for ``ref_audio``, built at most once.
-
-    The profile is keyed by the clip's path, size and mtime, so later
-    generations skip reloading Whisper and re-encoding the clip, and mlx-audio
-    no longer writes a fresh ``outetts_<uuid>.json`` on every call.
-    """
-    import hashlib
-
-    try:
-        st = os.stat(ref_audio)
-    except OSError as e:
-        raise TTSInputError("The reference audio file is missing or unreadable.") from e
-    digest = hashlib.sha256(
-        f"{os.path.abspath(ref_audio)}|{st.st_size}|{st.st_mtime_ns}".encode()
-    ).hexdigest()[:32]
-    path = os.path.join(_outetts_speaker_dir(), f"{digest}.json")
-    if os.path.isfile(path):
-        return path
-    # One build per clip at a time (parallel GPU workers can ask for the same
-    # clip), each writing its own temporary file so a replace never races.
-    with _outetts_speaker_lock:
-        if os.path.isfile(path):
-            return path
-        whisper_dir = _outetts_whisper_dir()
-        from mlx_audio.tts.models.outetts.audio_processor import AudioProcessor
-
-        processor = AudioProcessor()
-        speaker = processor.create_speaker_from_whisper(
-            _outetts_reference_array(ref_audio), whisper_model=whisper_dir,
-        )
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        tmp = f"{path}.{os.getpid()}.{uuid.uuid4().hex}.tmp"
-        try:
-            processor.save_speaker(speaker, tmp)
-            os.replace(tmp, path)
-        finally:
-            with contextlib.suppress(OSError):
-                os.remove(tmp)
-    return path
-
-
 class MLXAudioBackend(TTSBackend):
-    """Blaizzy/mlx-audio — Apple-Silicon-only wrapper over 14+ TTS engines
-    (Kokoro, CSM, Dia, Qwen3-TTS, Chatterbox, MeloTTS, OuteTTS, Spark,
-    Higgs-Audio, Voxtral, LongCat-AudioDiT, KugelAudio, MingOmni, Soprano).
+    """Blaizzy/mlx-audio - Apple-Silicon-only wrapper over MLX TTS engines
+    (VoxCPM2, Kokoro, CSM, Dia, Qwen3-TTS, Chatterbox).
 
     Exposed as a single backend with a `model_id` selector so the Settings
     UI can surface an engine picker within one adapter. The user switches
-    models by setting `OMNIVOICE_MLX_AUDIO_MODEL` or picking from the UI —
-    no code change per engine. Default is Kokoro (82M, multilingual, small).
+    models by setting `OMNIVOICE_MLX_AUDIO_MODEL` or picking from the UI -
+    no code change per engine. Default is VoxCPM2 8-bit (game-dev fork).
 
     Availability: requires mlx (Apple Silicon only). Skipped entirely on
     Linux/Windows/mac-Intel; the dep is platform-gated in pyproject.toml.
     """
 
     id = "mlx-audio"
-    display_name = "MLX-Audio (mac-ARM, 14+ engines: Kokoro, CSM, Dia, Qwen3, …)"
+    display_name = "MLX-Audio (mac-ARM: VoxCPM2, Kokoro, CSM, Dia, Qwen3, Chatterbox)"
     # mlx is Apple-Silicon-only; CPU is the practical fallback when the
     # mlx framework is installed but the user lacks an Apple GPU.
     gpu_compat = ("mps", "cpu")
@@ -2759,10 +2618,8 @@ class MLXAudioBackend(TTSBackend):
         labels = _MLX_AUDIO_MODEL_LABELS
         return tuple(labels.get(model_key, model_key) for model_key in cls.cloning_model_keys)
 
-    # A curated subset surfaced by default — the full mlx-audio roster is
-    # larger but these cover the useful tiers: small multilingual (Kokoro),
-    # voice-clone (CSM), voice-design (Qwen3), European (Kugel), lightweight
-    # VITS (MeloTTS). Users can point at any HF repo via OMNIVOICE_MLX_AUDIO_MODEL.
+    # A curated subset surfaced by default. Users can point at any HF repo via
+    # OMNIVOICE_MLX_AUDIO_MODEL.
     CURATED_MODELS = {
         "kokoro":      "mlx-community/Kokoro-82M-bf16",
         "csm":         "mlx-community/csm-1b-8bit",
@@ -2770,11 +2627,9 @@ class MLXAudioBackend(TTSBackend):
         "qwen3-tts-base": "mlx-community/Qwen3-TTS-12Hz-0.6B-Base-8bit",
         "dia":         "mlx-community/Dia-1.6B",
         "chatterbox":  "mlx-community/Chatterbox-TTS-4bit",
-        "melotts":     "mlx-community/MeloTTS-English-v3-MLX",
-        "outetts":     "mlx-community/Llama-OuteTTS-1.0-1B-4bit",
         "voxcpm2":     "mlx-community/VoxCPM2-8bit",
     }
-    DEFAULT_MODEL_KEY = "kokoro"
+    DEFAULT_MODEL_KEY = "voxcpm2"
 
     # Languages each curated model is documented to speak, as ISO 639-1 codes.
     # Drives both the language picker and the synthesis guard, so neither can
@@ -2787,9 +2642,6 @@ class MLXAudioBackend(TTSBackend):
     #   dia         huggingface.co/nari-labs/Dia-1.6B ("only supports English")
     #   chatterbox  huggingface.co/ResembleAI/chatterbox (base model; Multilingual
     #               is a separate checkpoint)
-    #   melotts     huggingface.co/mlx-community/MeloTTS-English-v3-MLX
-    #   outetts     huggingface.co/OuteAI/Llama-OuteTTS-1.0-1B (high + moderate
-    #               training-data tiers)
     #   voxcpm2     huggingface.co/mlx-community/VoxCPM2-8bit (30 languages,
     #               the same set as VoxCPM2Backend)
     CURATED_MODEL_LANGUAGES: dict[str, tuple[str, ...]] = {
@@ -2799,11 +2651,6 @@ class MLXAudioBackend(TTSBackend):
         "qwen3-tts-base": ("zh", "en", "ja", "ko", "de", "fr", "ru", "pt", "es", "it"),
         "dia": ("en",),
         "chatterbox": ("en",),
-        "melotts": ("en",),
-        "outetts": (
-            "en", "ar", "zh", "nl", "fr", "de", "it", "ja", "ko", "lt", "ru", "es",
-            "pt", "be", "bn", "ka", "hu", "lv", "fa", "pl", "sw", "ta", "uk",
-        ),
         "voxcpm2": (
             "ar", "my", "zh", "da", "nl", "en", "fi", "fr", "de", "el",
             "he", "hi", "id", "it", "ja", "km", "ko", "lo", "ms", "no",
@@ -2965,9 +2812,7 @@ class MLXAudioBackend(TTSBackend):
                 and self._model_id == local_model_path("tts", "mlx-audio")):
             validate("tts", "mlx-audio", self._model_id)
             local_fingerprint = loading_fingerprint(self._model_id)
-        if self._curated_key() == "melotts":
-            _ensure_melotts_text_frontend()
-        elif self._curated_key() == "kokoro":
+        if self._curated_key() == "kokoro":
             # #3367: Kokoro's misaki G2P falls back to espeak-ng, which
             # exit(1)s on an unreadable data path.
             from utils.espeak_data import ensure_espeak_data_path
@@ -3055,8 +2900,6 @@ class MLXAudioBackend(TTSBackend):
         kwargs = {"text": text, "speed": speed}
         if voice:     kwargs["voice"] = voice
         if ref_audio: kwargs["ref_audio"] = ref_audio
-        if self._curated_key() == "melotts":
-            _ensure_melotts_text_frontend()
         if self._curated_key() == "dia":
             # Dia is trained on speaker-tagged dialogue (huggingface.co/nari-labs/
             # Dia-1.6B). Untagged text runs to the full audio length instead of
@@ -3064,14 +2907,6 @@ class MLXAudioBackend(TTSBackend):
             kwargs["text"] = text = _dia_tagged(text)
             if ref_text:
                 ref_text = _dia_tagged(ref_text)
-        if ref_audio and isinstance(ref_audio, str) and self._curated_key() == "outetts":
-            # mlx-audio's OuteTTS only defines its Whisper input on the
-            # in-memory branch, so a file path fails with UnboundLocalError
-            # ('resampled_audio'). It would also download Whisper inside the
-            # GPU worker and hang there (#2700). Build the speaker ourselves
-            # from the local checkpoint and hand mlx-audio the saved profile.
-            kwargs.pop("ref_audio")
-            kwargs["voice"] = _outetts_speaker_file(ref_audio)
         # The comment above claimed instruct was passed "for Qwen3"; it never
         # was. The curated `qwen3-tts` model IS the VoiceDesign variant, which
         # mlx-audio refuses to run without one — so the engine was unusable no
@@ -3809,15 +3644,13 @@ def _engine_docs_url(bid: str) -> str | None:
 # Single-sourced here rather than on MLXAudioBackend.CURATED_MODELS itself so
 # the class dict stays a plain key → repo-id map (what __init__ needs).
 _MLX_AUDIO_MODEL_LABELS: dict[str, str] = {
-    "kokoro":     "Kokoro (default, fast)",
+    "kokoro":     "Kokoro (fast)",
     "csm":        "CSM (voice cloning)",
     "qwen3-tts":  "Qwen3-TTS (voice design)",
     "qwen3-tts-base": "Qwen3-TTS Base (voice cloning)",
     "dia":        "Dia",
     "chatterbox": "Chatterbox",
-    "melotts":    "MeloTTS (lightweight)",
-    "outetts":    "OuteTTS",
-    "voxcpm2":    "VoxCPM2 8-bit (30 languages, 48 kHz)",
+    "voxcpm2":    "VoxCPM2 8-bit (default, 30 languages, 48 kHz)",
 }
 
 
