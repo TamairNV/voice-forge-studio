@@ -209,23 +209,6 @@ def test_extract_failure_helper_keeps_other_failures(video_with_audio):
 
 
 @needs_ffmpeg
-def test_gallery_upload_refuses_video_without_audio(video_only, tmp_path, monkeypatch):
-    from fastapi import UploadFile
-
-    from api.routers import gallery
-
-    store = tmp_path / "store"
-    store.mkdir()
-    monkeypatch.setattr(gallery, "VOICE_GALLERY_DIR", store)
-    upload = UploadFile(io.BytesIO(video_only.read_bytes()), filename="silent.mp4")
-    with _raises_no_audio():
-        asyncio.run(gallery.upload_voice_clip(
-            name="x", character="", category="import", description="", audio=upload,
-        ))
-    assert not list(store.iterdir()), "the refused upload must not be kept"
-
-
-@needs_ffmpeg
 def test_clone_profile_refuses_reference_without_audio(video_only, tmp_path, monkeypatch):
     from fastapi import UploadFile
 

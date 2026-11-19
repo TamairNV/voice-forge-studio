@@ -54,7 +54,7 @@ _CRITICAL = [
     "POST /dub/upload", "POST /dub/ingest-url", "POST /dub/generate/{job_id}",
     "POST /dub/translate",
     "GET /engines", "POST /engines/select",
-    "GET /gallery/voices", "GET /archetypes",
+    "GET /archetypes",
     "POST /audiobook", "POST /stories/encode", "POST /batch/enqueue",
     "POST /transcribe", "GET /api/settings/hf-token/state",
     "POST /v1/audio/speech", "POST /v1/audio/transcriptions",

@@ -25,95 +25,6 @@ def _client(base_url="http://testserver", client=LOOPBACK):
     return TestClient(app, base_url=base_url, client=client)
 
 
-@pytest.fixture
-def spawned(monkeypatch):
-    """Record every subprocess the gallery route would start."""
-    import api.routers.gallery as gallery
-
-    calls = []
-
-    class _Proc:
-        returncode = 1
-
-        async def communicate(self):
-            return b"", b"stub failure"
-
-    async def fake_spawn(*argv, **_kwargs):
-        calls.append(list(argv))
-        return _Proc()
-
-    monkeypatch.setattr(gallery, "spawn_subprocess", fake_spawn)
-    return calls
-
-
-@pytest.fixture
-def public_dns(monkeypatch):
-    """Every host resolves to a public address; no real DNS in tests."""
-    import socket
-
-    from core import url_safety
-
-    def fake_getaddrinfo(host, port, *args, **kwargs):
-        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (PUBLIC_IP, port or 0))]
-
-    monkeypatch.setattr(url_safety.socket, "getaddrinfo", fake_getaddrinfo)
-    monkeypatch.delenv(url_safety.ALLOW_PRIVATE_ENV, raising=False)
-
-
-_DOWNLOAD = "/gallery/download?video_url=https://media.example/v&character_name=x"
-
-
-# ── Cross-site requests ──────────────────────────────────────────────────
-
-
-def test_cross_site_form_post_is_refused_before_ytdlp(spawned, public_dns):
-    response = _client().post(
-        _DOWNLOAD,
-        headers={
-            "Origin": EVIL,
-            "Content-Type": "application/x-www-form-urlencoded",
-            "Sec-Fetch-Site": "cross-site",
-        },
-    )
-    assert response.status_code == 403
-    assert "another website" in response.json()["detail"]
-    assert spawned == []
-
-
-@pytest.mark.parametrize("origin", ["null", "http://localhost:8080", "chrome-extension://abc"])
-def test_foreign_or_opaque_origins_are_refused(spawned, public_dns, origin):
-    assert _client().post(_DOWNLOAD, headers={"Origin": origin}).status_code == 403
-    assert spawned == []
-
-
-@pytest.mark.parametrize("site", ["cross-site", "same-site"])
-def test_fetch_metadata_without_origin_is_refused(spawned, public_dns, site):
-    assert _client().post(_DOWNLOAD, headers={"Sec-Fetch-Site": site}).status_code == 403
-    assert spawned == []
-
-
-@pytest.mark.parametrize(
-    "headers",
-    [
-        {},  # CLI, curl, MCP client, scripts
-        {"Sec-Fetch-Site": "none"},  # Electron main-process net.fetch
-        {"Origin": "http://testserver", "Sec-Fetch-Site": "same-origin"},  # served web UI
-        {"Origin": "app://voicestudio", "Sec-Fetch-Site": "cross-site"},  # packaged renderer
-        {"Origin": "http://localhost:3901"},  # browser dev UI
-    ],
-)
-def test_first_party_and_non_browser_requests_pass(spawned, public_dns, headers):
-    response = _client().post(_DOWNLOAD, headers=headers)
-    # Reaches the route: the stubbed yt-dlp run fails with a 500.
-    assert response.status_code == 500
-    assert len(spawned) == 1
-
-
-def test_configured_extra_origin_passes(spawned, public_dns, monkeypatch):
-    monkeypatch.setenv("OMNIVOICE_ALLOWED_ORIGINS", "https://ui.example")
-    assert _client().post(_DOWNLOAD, headers={"Origin": "https://ui.example"}).status_code == 500
-
-
 # A UI on another allowed origin (OMNIVOICE_PUBLIC_API_BASE deployments) loads
 # media and downloads with plain GETs: browsers send no Origin there, only
 # Sec-Fetch-Site and the page's Referer.
@@ -224,9 +135,6 @@ def test_side_effectful_get_routes_carry_the_cross_site_dependency():
         "/dub/preview-video/{job_id}",
         "/dub/onsets/{job_id}",
         "/archetypes/{archetype_id}/preview",
-        "/community/manifest",
-        "/community/items",
-        "/community/items/{item_id}/preview",
         "/setup/preflight",
         "/models/access/status",
         "/dub/export-stems/{job_id}",
@@ -446,59 +354,3 @@ def test_loopback_proxy_websocket_with_a_ticket_is_not_host_checked(default_host
         with proxied.websocket_connect(f"/ws/tts?ws_ticket={ticket}") as ws:
             ws.receive_text()
     admin_session_store.clear()
-
-
-def test_cross_site_refusal_gives_the_exact_line_that_allows_the_app(spawned, public_dns, monkeypatch):
-    monkeypatch.delenv("OMNIVOICE_ALLOWED_ORIGINS", raising=False)
-    app_origin = "http://localhost:6121"
-    detail = _client().post(_DOWNLOAD, headers={"Origin": app_origin}).json()["detail"]
-    assert f"({app_origin})" in detail
-    assert "%USERPROFILE%\\.config\\omnivoice\\env" in detail
-    line = detail.split("add OMNIVOICE_ALLOWED_ORIGINS=", 1)[1].split(" ", 1)[0]
-    # The line keeps the defaults (the variable replaces them) and adds the app.
-    assert "app://voicestudio" in line.split(",") and line.endswith(f",{app_origin}")
-    monkeypatch.setenv("OMNIVOICE_ALLOWED_ORIGINS", line)
-    assert _client().post(_DOWNLOAD, headers={"Origin": app_origin}).status_code != 403
-    assert _client().post(_DOWNLOAD, headers={"Origin": "app://voicestudio"}).status_code != 403
-
-
-@pytest.mark.parametrize("headers", [{"Origin": "null"}, {"Sec-Fetch-Site": "cross-site"}])
-def test_opaque_cross_site_refusal_keeps_the_generic_hint(spawned, public_dns, headers):
-    from core.browser_guard import CROSS_SITE_DETAIL
-
-    assert _client().post(_DOWNLOAD, headers=headers).json()["detail"] == CROSS_SITE_DETAIL
-
-
-@pytest.mark.parametrize("origin", ["https://airi.example", "http://airi.example", "http://[::1]:6121"])
-def test_suggested_origin_is_exactly_what_the_browser_sends(spawned, public_dns, monkeypatch, origin):
-    """CORS matches strings exactly: no default port may be added to the suggestion."""
-    from fastapi.middleware.cors import CORSMiddleware
-    from fastapi.testclient import TestClient
-
-    from core.csrf import allowed_origin_values
-
-    monkeypatch.delenv("OMNIVOICE_ALLOWED_ORIGINS", raising=False)
-    detail = _client().post(_DOWNLOAD, headers={"Origin": origin}).json()["detail"]
-    line = detail.split("add OMNIVOICE_ALLOWED_ORIGINS=", 1)[1].split(" ", 1)[0]
-    assert line.split(",")[-1] == origin
-    monkeypatch.setenv("OMNIVOICE_ALLOWED_ORIGINS", line)
-    # CORS captures its allowlist at startup. Recreate that layer with the
-    # suggested setting, as restarting the backend would.
-    client = TestClient(CORSMiddleware(
-        _client().app,
-        allow_origins=allowed_origin_values(),
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    ), client=LOOPBACK)
-    for allowed in (origin, "app://voicestudio"):
-        preflight = client.options(_DOWNLOAD, headers={
-            "Origin": allowed,
-            "Access-Control-Request-Method": "POST",
-            "Access-Control-Request-Headers": "content-type",
-        })
-        assert preflight.status_code == 200
-        assert preflight.headers["access-control-allow-origin"] == allowed
-        response = client.post(_DOWNLOAD, headers={"Origin": allowed})
-        assert response.status_code == 500  # Reached the stubbed yt-dlp route.
-        assert response.headers["access-control-allow-origin"] == allowed

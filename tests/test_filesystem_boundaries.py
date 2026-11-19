@@ -147,29 +147,6 @@ def test_duration_probe_rejects_absolute_traversal_and_symlink_escapes(tmp_path,
     assert spawned == []
 
 
-def test_marketplace_filename_cannot_escape_store(tmp_path, monkeypatch):
-    from api.routers import marketplace
-
-    monkeypatch.setattr(marketplace, "MARKETPLACE_DIR", tmp_path / "store")
-    (tmp_path / "store").mkdir()
-    with pytest.raises(HTTPException) as exc:
-        asyncio.run(marketplace.install_from_marketplace("../secret.omnivoice"))
-    assert exc.value.status_code == 400
-
-
-def test_marketplace_db_asset_cannot_escape_voices(tmp_path, monkeypatch):
-    from api.routers import marketplace
-
-    voices = tmp_path / "voices"
-    voices.mkdir()
-    secret = tmp_path / "secret.wav"
-    secret.write_bytes(b"secret")
-    monkeypatch.setattr(marketplace, "VOICES_DIR", str(voices))
-    with pytest.raises(HTTPException) as exc:
-        marketplace._voice_asset(secret)
-    assert exc.value.status_code == 400
-
-
 def test_profile_lock_rejects_history_path_outside_outputs(tmp_path, monkeypatch):
     from api.routers import profiles
 

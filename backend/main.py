@@ -796,10 +796,8 @@ def _phase_a_build_inner() -> None:
         tools,
         stories,
         setup,
-        gallery,
         archetypes,
         describe_voice,
-        community,
         batch,
         watermark,
         events,
@@ -809,7 +807,6 @@ def _phase_a_build_inner() -> None:
         dictation,
         openai_compat,
         tts_stream,
-        marketplace,
         personas,
         sonitranslate,
         audiobook,
@@ -827,9 +824,9 @@ def _phase_a_build_inner() -> None:
     _router_modules.extend([
         system, profiles, profile_images, exports, generation, voice_convert, sfx, dub_core, dub_generate,
         dub_export, dub_translate, projects, glossary, engines, tools,
-        stories, setup, gallery, archetypes, describe_voice, community,
+        stories, setup, archetypes, describe_voice,
         batch, watermark, events, capture, capture_ws, speech_platform, dictation,
-        openai_compat, tts_stream, marketplace, personas, sonitranslate,
+        openai_compat, tts_stream, personas, sonitranslate,
         audiobook, longform_jobs, pronunciation, settings_router,
         media_tools_router, auth_router, _mcp_bindings_router,
         _telephony_twilio_router, _calls_router,
@@ -1079,9 +1076,6 @@ async def _phase_b(app: FastAPI) -> None:
     # Network sharing is loopback-only by default; seed the (disabled) state
     # so the middleware and /system/network/state always have something to read.
     app.state.network_share = network_share.get_state()
-    from api.routers.gallery import _init_gallery_db
-
-    _init_gallery_db()
     # Seed a demo voice profile on first run (empty DB only).
     from core.onboarding import seed_sample_project
     seed_sample_project()

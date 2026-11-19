@@ -114,59 +114,6 @@ def _client():
     return TestClient(app, client=("127.0.0.1", 1))
 
 
-@pytest.fixture
-def spawned(monkeypatch):
-    import api.routers.gallery as gallery
-
-    calls = []
-
-    class _Proc:
-        returncode = 1
-
-        async def communicate(self):
-            return b"", b"stub failure"
-
-    async def fake_spawn(*argv, **_kwargs):
-        calls.append(list(argv))
-        return _Proc()
-
-    monkeypatch.setattr(gallery, "spawn_subprocess", fake_spawn)
-    return calls
-
-
-@pytest.mark.parametrize(
-    "video_url",
-    ["--config-locations=/tmp/evil.conf", "--exec=touch /tmp/x", "-a/tmp/list", "ytsearch:x"],
-)
-def test_option_like_gallery_url_never_reaches_ytdlp(spawned, video_url):
-    response = _client().post(
-        "/gallery/download", params={"video_url": video_url, "character_name": "x"}
-    )
-    assert response.status_code == 400
-    assert spawned == []
-
-
-@pytest.mark.parametrize("ip", ["10.0.0.7", "169.254.169.254", "::ffff:127.0.0.1"])
-def test_private_gallery_destination_is_refused(spawned, monkeypatch, ip):
-    monkeypatch.setattr(url_safety.socket, "getaddrinfo", _answers(ip))
-    response = _client().post(
-        "/gallery/download", params={"video_url": "http://target:9000/x", "character_name": "x"}
-    )
-    assert response.status_code == 400
-    assert ALLOW_PRIVATE_ENV in response.json()["detail"]
-    assert spawned == []
-
-
-def test_public_gallery_url_runs_guarded_ytdlp_with_separator(spawned, monkeypatch):
-    monkeypatch.setattr(url_safety.socket, "getaddrinfo", _answers(PUBLIC_IP))
-    url = "https://www.youtube.com/watch?v=abc"
-    response = _client().post("/gallery/download", params={"video_url": url, "character_name": "x"})
-    assert response.status_code == 500  # the stubbed run fails
-    (argv,) = spawned
-    assert argv[-2:] == ["--", url]
-    assert "core.url_safety" in " ".join(argv[:4])
-
-
 @pytest.mark.parametrize("ip", ["127.0.0.1", "192.168.0.5", "169.254.169.254"])
 def test_private_dub_ingest_destination_is_refused(monkeypatch, ip):
     from core.tasks import task_manager
@@ -191,12 +138,6 @@ def test_private_dub_ingest_destination_is_refused(monkeypatch, ip):
 @pytest.mark.parametrize("name", ["evil.conf", "cfg.txt", "run.sh", "noext"])
 def test_uploads_refuse_non_media_extensions(name):
     client = _client()
-    gallery = client.post(
-        "/gallery/upload",
-        data={"name": "x"},
-        files={"audio": (name, b"--exec touch /tmp/x\n", "application/octet-stream")},
-    )
-    assert gallery.status_code == 415
     dub = client.post(
         "/dub/upload",
         files={"video": (name, b"--exec touch /tmp/x\n", "application/octet-stream")},
