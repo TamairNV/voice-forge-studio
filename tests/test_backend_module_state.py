@@ -11,15 +11,15 @@ import sys
 
 import backend_module_state
 import core.db as db_at_collection
-from services import dub_pipeline as dub_pipeline_at_collection
+from services import local_stats as local_stats_at_collection
 
 
 def test_earlier_suites_leave_collection_time_modules_in_place():
     # Fails in a full `pytest tests/` run when an earlier suite leaves twins.
     assert sys.modules["core.db"] is db_at_collection
     assert importlib.import_module("core").db is db_at_collection
-    assert importlib.import_module("services").dub_pipeline is dub_pipeline_at_collection
-    assert dub_pipeline_at_collection.db_conn is db_at_collection.db_conn
+    assert importlib.import_module("services").local_stats is local_stats_at_collection
+    assert local_stats_at_collection.db_conn is db_at_collection.db_conn
 
 
 def test_restore_reinstates_modules_and_package_bindings():

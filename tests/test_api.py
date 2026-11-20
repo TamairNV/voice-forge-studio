@@ -205,191 +205,30 @@ class TestTaskManager:
 # SRT EXPORT TESTS
 # ═══════════════════════════════════════════════════════════════════════
 
-class TestSRTExport:
-    def test_srt_export(self, client, seeded_job):
-        job_id, _ = seeded_job
-        res = client.get(f"/dub/srt/{job_id}")
-        assert res.status_code == 200
-        content = res.text
-        assert "1\n" in content
-        assert "Hello world" in content
-        assert "-->" in content
-
-    def test_srt_404_missing_job(self, client):
-        res = client.get("/dub/srt/nonexistent")
-        assert res.status_code == 404
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # VTT EXPORT TESTS
 # ═══════════════════════════════════════════════════════════════════════
 
-class TestVTTExport:
-    def test_vtt_export(self, client, seeded_job):
-        job_id, _ = seeded_job
-        res = client.get(f"/dub/vtt/{job_id}")
-        assert res.status_code == 200
-        content = res.text
-        assert content.startswith("WEBVTT")
-        assert "Hello world" in content
-        assert "-->" in content
-        # VTT uses periods not commas
-        assert "." in content.split("-->")[0]
-
-    def test_vtt_format_correct(self, client, seeded_job):
-        job_id, _ = seeded_job
-        res = client.get(f"/dub/vtt/{job_id}")
-        lines = res.text.strip().split("\n")
-        assert lines[0] == "WEBVTT"
-        # Find a timestamp line
-        ts_lines = [l for l in lines if "-->" in l]
-        assert len(ts_lines) == 3
-        # Verify format: HH:MM:SS.mmm
-        for ts in ts_lines:
-            start, end = ts.split("-->")
-            assert "." in start.strip()
-            assert "." in end.strip()
-
-    def test_vtt_404_missing_job(self, client):
-        res = client.get("/dub/vtt/nonexistent")
-        assert res.status_code == 404
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # PER-SEGMENT ZIP EXPORT TESTS
 # ═══════════════════════════════════════════════════════════════════════
 
-class TestSegmentZipExport:
-    def test_segments_zip_export(self, client, seeded_job):
-        job_id, _ = seeded_job
-        res = client.get(f"/dub/export-segments/{job_id}")
-        assert res.status_code == 200
-        assert res.headers["content-type"] == "application/zip"
-
-        import zipfile
-        zf = zipfile.ZipFile(io.BytesIO(res.content))
-        names = zf.namelist()
-        assert len(names) == 3
-        # Verify naming convention: 001_0.00-1.00_Speaker1.wav
-        assert names[0].startswith("001_")
-        assert names[0].endswith(".wav")
-        assert "Speaker" in names[0]
-
-    def test_segments_zip_404(self, client):
-        res = client.get("/dub/export-segments/nonexistent")
-        assert res.status_code == 404
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # STEM EXPORT TESTS
 # ═══════════════════════════════════════════════════════════════════════
 
-class TestStemExport:
-    def test_stems_zip_export(self, client, seeded_job):
-        job_id, _ = seeded_job
-        res = client.get(f"/dub/export-stems/{job_id}")
-        assert res.status_code == 200
-        assert res.headers["content-type"] == "application/zip"
-
-        import zipfile
-        zf = zipfile.ZipFile(io.BytesIO(res.content))
-        names = zf.namelist()
-        assert any("vocals" in n for n in names)
-        assert any("background" in n for n in names)
-
-    def test_stems_404_no_tracks(self, client):
-        import main as api_mod
-        job_id = "stems_test"
-        __import__('services.dub_pipeline', fromlist=['_dub_jobs'])._dub_jobs[job_id] = {
-            "segments": [], "dubbed_tracks": {}, "filename": "t.mp4",
-            "video_path": "", "duration": 0,
-        }
-        res = client.get(f"/dub/export-stems/{job_id}")
-        assert res.status_code == 400
-        __import__('services.dub_pipeline', fromlist=['_dub_jobs'])._dub_jobs.pop(job_id, None)
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # SCENE-AWARE DUBBING TESTS
 # ═══════════════════════════════════════════════════════════════════════
 
-class TestSceneAwareDubbing:
-    def test_scene_cuts_stored(self, seeded_job):
-        _, job = seeded_job
-        assert "scene_cuts" in job
-        assert isinstance(job["scene_cuts"], list)
-
-    def test_scene_split_algorithm(self):
-        """Test the segment splitting logic directly."""
-        segments = [
-            {"id": "s1", "start": 0.0, "end": 3.0, "text": "Hello world this is a test sentence", "speaker_id": "Speaker 1"},
-        ]
-        scene_cuts = [1.5]
-
-        # Run the algorithm inline (mirrors api.py logic)
-        sorted_cuts = sorted(scene_cuts)
-        new_segments = []
-        for s in segments:
-            s_start = s["start"]
-            s_end = s["end"]
-            valid_cuts = [c for c in sorted_cuts if c > s_start + 0.2 and c < s_end - 0.2]
-
-            if not valid_cuts:
-                new_segments.append(s)
-            else:
-                curr_start = s_start
-                curr_text = s["text"]
-                total_dur = s_end - s_start
-
-                for cut in valid_cuts:
-                    ratio = (cut - curr_start) / max(total_dur, 0.01)
-                    split_idx = int(len(curr_text) * ratio)
-                    space_idx = curr_text.rfind(' ', 0, split_idx + 5)
-                    if space_idx != -1 and space_idx > split_idx - 10:
-                        split_idx = space_idx
-
-                    part_text = curr_text[:split_idx].strip()
-                    curr_text = curr_text[split_idx:].strip()
-
-                    if part_text:
-                        new_seg = dict(s)
-                        new_seg["start"] = round(curr_start, 2)
-                        new_seg["end"] = round(cut, 2)
-                        new_seg["text"] = part_text
-                        new_seg["id"] = "new1"
-                        new_segments.append(new_seg)
-
-                    curr_start = cut
-                    total_dur = s_end - curr_start
-
-                if curr_text:
-                    new_seg = dict(s)
-                    new_seg["start"] = round(curr_start, 2)
-                    new_seg["end"] = round(s_end, 2)
-                    new_seg["text"] = curr_text
-                    new_seg["id"] = "new2"
-                    new_segments.append(new_seg)
-
-        assert len(new_segments) == 2
-        assert new_segments[0]["end"] == 1.5
-        assert new_segments[1]["start"] == 1.5
-        # Text should be split
-        combined = new_segments[0]["text"] + " " + new_segments[1]["text"]
-        assert combined == "Hello world this is a test sentence"
-
-    def test_no_split_when_cut_too_close_to_edge(self):
-        """Cuts within 0.2s of segment edges should NOT split."""
-        segments = [{"id": "s1", "start": 0.0, "end": 1.0, "text": "Short", "speaker_id": "Speaker 1"}]
-        scene_cuts = [0.1, 0.9]  # Both within 0.2s padding
-
-        sorted_cuts = sorted(scene_cuts)
-        new_segments = []
-        for s in segments:
-            valid_cuts = [c for c in sorted_cuts if c > s["start"] + 0.2 and c < s["end"] - 0.2]
-            if not valid_cuts:
-                new_segments.append(s)
-
-        assert len(new_segments) == 1  # No split occurred
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -447,19 +286,6 @@ class TestLipSyncScoring:
 # SRT/VTT TIMESTAMP FORMATTING TESTS
 # ═══════════════════════════════════════════════════════════════════════
 
-class TestTimestampFormatting:
-    def test_srt_time_format(self):
-        from api.routers.dub_export import _format_srt_time
-        assert _format_srt_time(0.0) == "00:00:00,000"
-        assert _format_srt_time(61.5) == "00:01:01,500"
-        assert _format_srt_time(3661.123) == "01:01:01,123"
-
-    def test_vtt_time_format(self):
-        from api.routers.dub_export import _format_vtt_time
-        assert _format_vtt_time(0.0) == "00:00:00.000"
-        assert _format_vtt_time(61.5) == "00:01:01.500"
-        # SRT uses comma, VTT uses period
-        assert "." in _format_vtt_time(1.0)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -487,13 +313,6 @@ class TestAPIEndpoints:
         assert "gpu_utilization" in data
         assert data["total_vram"] >= 0
 
-    def test_dub_tracks(self, client, seeded_job):
-        job_id, _ = seeded_job
-        res = client.get(f"/dub/tracks/{job_id}")
-        assert res.status_code == 200
-        data = res.json()
-        assert "tracks" in data
-        assert "en" in data["tracks"]
 
     def test_tasks_stream_404(self, client):
         res = client.get("/tasks/stream/nonexistent")

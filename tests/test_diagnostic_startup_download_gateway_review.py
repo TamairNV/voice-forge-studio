@@ -9,13 +9,6 @@ from test_diagnostic_reports import reporter, records  # noqa: F401
 from test_model_preload_diagnostic_owner import preload  # noqa: F401
 
 
-@pytest.fixture(autouse=True)
-def no_app_intake(monkeypatch):
-    """These local diagnostic assertions must never select build credentials."""
-    transport = importlib.import_module("core.diagnostic_app_transport")
-    monkeypatch.setattr(transport, "app_destination", lambda: None)
-
-
 @pytest.mark.parametrize("change", ["off_to_on", "regrant", "same", "withdraw", "cancel"])
 def test_startup_tts_wait_owns_permission_before_task_submission(
     reporter, preload, monkeypatch, change,

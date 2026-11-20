@@ -74,8 +74,6 @@ def test_whole_repo_entries_keep_their_repo_id_identity(models):
     for model in models.KNOWN_MODELS:
         if "id" not in model:
             assert catalog.get(model["repo_id"]) is model
-    # The existing audio.cpp bundle is still addressed by its repo id.
-    assert catalog.get(REPO)["allow_patterns"] == [BREEZE_FILE, SORTFORMER_FILE]
     assert catalog.get(DOTS)["repo_id"] == REPO
     assert catalog.get(DOTS)["engines"] == ["audiocpp-dots"]
 
@@ -105,6 +103,16 @@ def cache(models, monkeypatch, tmp_path):
         return [str(p) for p in repo_dir.iterdir()] if repo_dir.is_dir() else []
 
     catalogue = importlib.import_module("services.model_catalogue")
+    sibling = {
+        "repo_id": REPO,
+        "label": "Synthetic sibling package",
+        "engines": ["synthetic-sibling"],
+        "allow_patterns": [BREEZE_FILE, SORTFORMER_FILE],
+        "required_files": [BREEZE_FILE],
+    }
+    extended = list(catalogue.KNOWN_MODELS) + [sibling]
+    monkeypatch.setattr(catalogue, "KNOWN_MODELS", extended)
+    monkeypatch.setattr(models, "KNOWN_MODELS", extended)
     for module in (models, catalogue):
         monkeypatch.setattr(module, "_snapshot_dirs", snapshots)
     monkeypatch.setattr(catalogue, "snapshot_has_weights", lambda _path: True)
@@ -117,11 +125,6 @@ def cache(models, monkeypatch, tmp_path):
 def test_a_sibling_package_never_makes_an_entry_look_installed(models, cache):
     _snapshot(cache, {BREEZE_FILE: b"breeze", SORTFORMER_FILE: b"sortformer"})
     catalog = models.get_model_catalog()
-    assert models.package_cache_usage(catalog.get(REPO)) == {
-        "size_on_disk": len(b"breeze") + len(b"sortformer"),
-        "last_accessed": None,
-        "nb_files": 2,
-    }
     assert models.package_cache_usage(catalog.get(DOTS)) is None
 
 
@@ -145,15 +148,13 @@ def test_list_models_reports_each_package_by_its_identity(models, cache, monkeyp
     models.invalidate_cache()
     rows = {row["repo_id"]: row for row in models.list_models()["models"]}
     models.invalidate_cache()
-    dots, bundle = rows[DOTS], rows[REPO]
+    dots = rows[DOTS]
     assert dots["hf_repo"] == REPO and dots["installed"] is True
     assert dots["size_on_disk_bytes"] == len(b"dots-weights")
     assert dots["license_info"] == {"key": DOTS}
-    # The bundle's files are absent: the dots package does not install it.
-    assert bundle["installed"] is False and bundle["hf_repo"] == REPO
 
 
-def test_uninstalling_one_package_keeps_the_other(models, download, cache, monkeypatch):
+def test_uninstalling_one_package_keeps_sibling_files(models, download, cache, monkeypatch):
     snap = _snapshot(cache, {
         BREEZE_FILE: b"breeze", SORTFORMER_FILE: b"sortformer", DOTS_FILE: b"dots-weights",
     })
@@ -170,16 +171,6 @@ def test_uninstalling_one_package_keeps_the_other(models, download, cache, monke
     with pytest.raises(Exception) as exc:
         download.delete_model(DOTS)
     assert getattr(exc.value, "status_code", None) == 404
-
-
-def test_uninstalling_the_bundle_keeps_dots(models, download, cache, monkeypatch):
-    snap = _snapshot(cache, {
-        BREEZE_FILE: b"breeze", SORTFORMER_FILE: b"sortformer", DOTS_FILE: b"dots-weights",
-    })
-    monkeypatch.setattr(download, "invalidate_cache", lambda: None)
-    download.delete_model(REPO)
-    assert (snap / DOTS_FILE).read_bytes() == b"dots-weights"
-    assert not (snap / BREEZE_FILE).exists()
 
 
 def test_install_downloads_the_package_from_its_hub_repo(download, monkeypatch, tmp_path):
@@ -233,9 +224,6 @@ def test_engine_disk_usage_counts_only_its_package(models, cache):
 
     _snapshot(cache, {BREEZE_FILE: b"breeze", SORTFORMER_FILE: b"sortformer", DOTS_FILE: b"dots"})
     assert engine_disk_usage._measure_model_cache("audiocpp-dots")["model_bytes"] == len(b"dots")
-    assert engine_disk_usage._measure_model_cache("audiocpp")["model_bytes"] == len(
-        b"breezesortformer"
-    )
 
 
 def test_services_read_the_catalogue_without_importing_a_router():

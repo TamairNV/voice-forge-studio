@@ -186,23 +186,6 @@ def test_shared_cache_directory_is_not_trusted(tmp_path):
     assert ed._cached_copy(source, root) is None
 
 
-def test_kittentts_load_checks_espeak_before_constructing(monkeypatch):
-    """The guard runs before KittenTTS() — whose phonemizer init is the exit(1)."""
-    ed = _ed()
-    tts_backend = importlib.import_module("services.tts_backend")
-
-    constructed = []
-    monkeypatch.setitem(sys.modules, "kittentts", SimpleNamespace(KittenTTS=lambda *a: constructed.append(a)))
-
-    def refuse():
-        raise ed.EspeakDataError("no data")
-
-    monkeypatch.setattr(ed, "ensure_espeak_data_path", refuse)
-    with pytest.raises(ed.EspeakDataError):
-        tts_backend.KittenTTSBackend()._ensure_loaded()
-    assert constructed == []
-
-
 @pytest.mark.parametrize(("owned", "reused"), [(False, False), (True, True), (None, True)])
 def test_windows_cache_needs_this_users_ownership(tmp_path, monkeypatch, owned, reused):
     """A cache directory another Windows user owns is skipped; unknown falls back to the content check."""

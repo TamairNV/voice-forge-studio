@@ -42,23 +42,6 @@ def media_tools_acquire():
     return _svc().acquire_bundled()
 
 
-# Literal ytdlp routes MUST register before the parametrized {tool} routes —
-# FastAPI matches in declaration order, and `/media-tools/{tool}/restore`
-# would otherwise swallow `/media-tools/ytdlp/restore` into a 400.
-@router.post("/media-tools/ytdlp/update")
-def media_tools_ytdlp_update():
-    """Fetch the newest yt-dlp wheel (sha256-verified against PyPI metadata)
-    into the update-surviving overlay. Applies on next backend start."""
-    return _svc().update_ytdlp()
-
-
-@router.post("/media-tools/ytdlp/restore")
-def media_tools_ytdlp_restore():
-    """Drop the overlay — the app-tested, locked yt-dlp takes over on next
-    start. Always safe (the locked install is never modified)."""
-    return _svc().restore_ytdlp()
-
-
 @router.post("/media-tools/{tool}/custom-path")
 def media_tools_custom_path(tool: str, body: CustomPathRequest):
     from core.path_authorization import PathAuthorizationError, consume

@@ -20,7 +20,7 @@ instead — same model family, no NeMo dependency:
 
 - **Apple Silicon:** [parakeet-mlx](parakeet-mlx.md) (installed by default on
   mac-ARM source installs).
-- **Any platform, CPU:** [sherpa-onnx-asr](sherpa-onnx-asr.md) — selectable
+- **Any platform, CPU:** sherpa-onnx-asr — selectable
   int8 ONNX exports of Parakeet TDT v2/v3; Whisper Tiny remains the
   cross-platform dictation default.
 

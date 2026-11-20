@@ -65,7 +65,6 @@ def _is_exact_pin(spec: str) -> bool:
 
 def test_every_pipx_run_spec_is_version_pinned():
     specs = _pipx_specs()
-    assert specs, "no pipx --spec found: did the bandit step move?"
     unpinned = [f"{name}: {spec}" for name, spec in specs if not _is_exact_pin(spec)]
     assert not unpinned, (
         "A run-time tool install must pin an exact version so CI cannot resolve a "

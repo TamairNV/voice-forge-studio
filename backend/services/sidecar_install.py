@@ -222,16 +222,6 @@ def _moss_installed() -> bool:
     return is_moss_tts_v15_installed()
 
 
-def _confucius4_invalidate() -> None:
-    from engines.confucius4 import bootstrap
-    bootstrap.invalidate()
-
-
-def _confucius4_installed() -> bool:
-    from engines.confucius4.bootstrap import is_confucius4_installed
-    return is_confucius4_installed()
-
-
 def _dots_invalidate() -> None:
     from engines.dots_tts import bootstrap
     bootstrap.invalidate()
@@ -240,16 +230,6 @@ def _dots_invalidate() -> None:
 def _dots_installed() -> bool:
     from engines.dots_tts.bootstrap import is_dots_tts_installed
     return is_dots_tts_installed()
-
-
-def _ming_invalidate() -> None:
-    from engines.ming_tts import bootstrap
-    bootstrap.invalidate()
-
-
-def _ming_installed() -> bool:
-    from engines.ming_tts.bootstrap import is_ming_tts_installed
-    return is_ming_tts_installed()
 
 
 def _host_family() -> str:
@@ -416,16 +396,6 @@ def _moss_host() -> tuple[bool, str]:
     )
 
 
-def _sfx_installed() -> bool:
-    from engines.moss_sfx.bootstrap import is_sfx_installed
-    return is_sfx_installed()
-
-
-def _sfx_host() -> tuple[bool, str]:
-    from engines.moss_sfx import host_support
-    return host_support()
-
-
 def _dots_host() -> tuple[bool, str]:
     if sys.platform != "win32":
         return True, ""
@@ -553,40 +523,6 @@ SPECS: dict[str, SidecarSpec] = {
         invalidate=_moss_invalidate,
         installed_probe=_moss_installed,
     ),
-    "confucius4-tts": SidecarSpec(
-        engine_id="confucius4-tts",
-        display_name="Confucius4-TTS",
-        repo_url="https://github.com/netease-youdao/Confucius4-TTS.git",
-        tarball_url=(
-            "https://github.com/netease-youdao/Confucius4-TTS/archive/"
-            "4fb32c481302d8858c3aec6a1c2a8b4cea8894c0.tar.gz"
-        ),
-        checkout_dirname="Confucius4-TTS",
-        env_var="OMNIVOICE_CONFUCIUS4_TTS_DIR",
-        probe_module="confuciustts",
-        # Upstream is not pip-installable; the package resolves from the
-        # checkout on sys.path, exactly as the engine's sidecar imports it.
-        probe_code="import sys; sys.path.insert(0, {checkout_repr}); import confuciustts",
-        source_revision="4fb32c481302d8858c3aec6a1c2a8b4cea8894c0",
-        # No pyproject.toml upstream: requirements.txt is its manifest.
-        source_manifest="requirements.txt",
-        source_required_path="setup.py",
-        venv_args=("--python", "3.10"),
-        install_args=("-r", "{checkout}/requirements.txt"),
-        # torch==2.7.0: CPU-only from PyPI on Windows; the CUDA index supplies
-        # 2.7.0+cu128, which satisfies the same pin. A ROCm host takes
-        # 2.7.0+rocm6.3 instead (upstream_torch).
-        uses_cuda_index=True,
-        upstream_torch="2.7.0",
-        docs_path="docs/engines/confucius4-tts.md",
-        # ~7 GB venv now, ~5 GB of weights on first synthesis.
-        required_bytes=14 * _GIB,
-        dependency_bytes=8 * _GIB,
-        temporary_free_bytes=8 * _GIB,
-        disk_confidence="estimated",
-        invalidate=_confucius4_invalidate,
-        installed_probe=_confucius4_installed,
-    ),
     "dots-tts": SidecarSpec(
         engine_id="dots-tts",
         display_name="dots.tts",
@@ -613,94 +549,10 @@ SPECS: dict[str, SidecarSpec] = {
         invalidate=_dots_invalidate,
         installed_probe=_dots_installed,
     ),
-    # Ming-3.0-tts-0.5b (#3793). Upstream is not pip-installable (flat modules,
-    # requirements.txt only); the sidecar puts the checkout on sys.path. The
-    # ~3 GB weights come only from the Model Catalogue row the user starts.
-    "ming-tts": SidecarSpec(
-        engine_id="ming-tts",
-        display_name="Ming-3.0-tts",
-        repo_url="https://github.com/inclusionAI/Ming-3.0-tts.git",
-        tarball_url=(
-            "https://github.com/inclusionAI/Ming-3.0-tts/archive/"
-            "a39b80660bdc5a4394d5e1d41af6dbfd9c443a54.tar.gz"
-        ),
-        checkout_dirname="Ming-3.0-tts",
-        env_var="OMNIVOICE_MING_TTS_DIR",
-        probe_module="ming_tts",
-        probe_code="import sys; sys.path.insert(0, {checkout_repr}); import ming_tts",
-        source_revision="a39b80660bdc5a4394d5e1d41af6dbfd9c443a54",
-        # No pyproject.toml upstream: requirements.txt is its manifest.
-        source_manifest="requirements.txt",
-        source_required_path="ming_tts.py",
-        # The upstream flash-attn wheel and the tiny model both target 3.10.
-        venv_args=("--python", "3.10"),
-        install_args=("-r", "{checkout}/requirements.txt"),
-        host_supported=_ming_host,
-        docs_path="docs/engines/ming-tts.md",
-        # ~7 GB venv (torch 2.6 + CUDA libs), ~3 GB of weights from the Model Catalogue.
-        required_bytes=12 * _GIB,
-        dependency_bytes=8 * _GIB,
-        temporary_free_bytes=8 * _GIB,
-        disk_confidence="estimated",
-        invalidate=_ming_invalidate,
-        installed_probe=_ming_installed,
-    ),
-    # MOSS-SoundEffect v2.0 (#3577): text to sound effects, not speech. Upstream
-    # pins numpy==1.26.4 / transformers==4.57.1 and CUDA 12.8 torch 2.9.0, so it
-    # gets its own Python 3.12 venv; the weights are the diffusers-style v2.0
-    # repository, downloaded only when the user clicks Install.
-    "moss-soundeffect": SidecarSpec(
-        engine_id="moss-soundeffect",
-        display_name="MOSS-SoundEffect v2.0",
-        repo_url="https://github.com/OpenMOSS/MOSS-TTS.git",
-        tarball_url=(
-            "https://github.com/OpenMOSS/MOSS-TTS/archive/"
-            "934d6826b084c46a0d033402174d5f8ac4ed2519.tar.gz"
-        ),
-        checkout_dirname="MOSS-TTS",
-        env_var="OMNIVOICE_MOSS_SFX_DIR",
-        probe_module="moss_soundeffect_v2",
-        source_revision="934d6826b084c46a0d033402174d5f8ac4ed2519",
-        source_required_path="moss_soundeffect_v2/pyproject.toml",
-        # Upstream requires-python is >=3.12.
-        venv_args=("--python", "3.12"),
-        install_args=("-e", "{checkout}/moss_soundeffect_v2"),
-        torch_pins=("torch==2.9.0", "torchaudio==2.9.0", "torchvision==0.24.0"),
-        weights_repo_id="OpenMOSS-Team/MOSS-SoundEffect-v2.0",
-        weights_revision="e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
-        weights_subdir="checkpoints",
-        weights_config_names=("model_index.json",),
-        host_supported=_sfx_host,
-        docs_path="docs/engines/moss-soundeffect.md",
-        # ~8 GB venv (CUDA torch + gradio + audiotools) and 11.2 GB of weights.
-        required_bytes=22 * _GIB,
-        weights_bytes=11_230_170_282,
-        dependency_bytes=8 * _GIB,
-        temporary_free_bytes=8 * _GIB,
-        disk_confidence="estimated",
-        installed_probe=_sfx_installed,
-    ),
     # PyPI packages rather than repositories: nothing to clone, and the managed
     # root holds only the engine's own venv. The pins are the app's own
     # optional extras (a test ties the two together), so the engine runs the
     # same wheel whichever way it was installed.
-    "supertonic3": SidecarSpec(
-        engine_id="supertonic3",
-        display_name="Supertonic-3",
-        repo_url="",
-        tarball_url="",
-        checkout_dirname="supertonic3",
-        env_var="OMNIVOICE_SUPERTONIC3_DIR",
-        probe_module="supertonic",
-        has_source=False,
-        venv_args=("--python", "3.11"),
-        install_args=("supertonic==1.3.1",),
-        docs_path="docs/engines/supertonic3.md",
-        # onnxruntime + numpy + huggingface_hub, no torch. The ~400 MB of
-        # weights download on first synthesis into the shared HF cache.
-        required_bytes=1 * _GIB,
-        installed_probe=_in_app_env("supertonic"),
-    ),
     "pockettts": SidecarSpec(
         engine_id="pockettts",
         display_name="PocketTTS",
@@ -743,48 +595,6 @@ SPECS: dict[str, SidecarSpec] = {
         installed_probe=_in_app_env("voxcpm"),
         host_supported=_no_intel_mac(
             "VoxCPM2 needs a PyTorch version that has no Intel Mac build."
-        ),
-    ),
-    # Upstream is unpinned and its entry point has moved before (#1287), so the
-    # install pins a reviewed commit (2026-09-06) and the sidecar drives the
-    # runtime that commit ships (moss_tts_nano_runtime.NanoTTSService). Its
-    # pyproject pins torch==2.7.0 exactly, so the CUDA index yields +cu128.
-    "moss-tts-nano": SidecarSpec(
-        engine_id="moss-tts-nano",
-        display_name="MOSS-TTS-Nano",
-        repo_url="https://github.com/OpenMOSS/MOSS-TTS-Nano.git",
-        tarball_url=(
-            "https://github.com/OpenMOSS/MOSS-TTS-Nano/archive/"
-            "8b7bcc9341b3b4ef3a3a58ba1338a7d85ff133eb.tar.gz"
-        ),
-        checkout_dirname="MOSS-TTS-Nano",
-        env_var="OMNIVOICE_MOSS_TTS_NANO_DIR",
-        probe_module="moss_tts_nano_runtime",
-        probe_code=(
-            "import moss_tts_nano_runtime, torchaudio\n"
-            "if not torchaudio.list_audio_backends():\n"
-            "    raise RuntimeError('torchaudio has no I/O backend (install soundfile)')"
-        ),
-        source_revision="8b7bcc9341b3b4ef3a3a58ba1338a7d85ff133eb",
-        source_required_path="moss_tts_nano_runtime.py",
-        docs_path="docs/engines/moss-tts-nano.md",
-        venv_args=("--python", "3.11"),
-        # Upstream's pyproject pins torchaudio==2.7.0 but ships no I/O backend
-        # — torchaudio 2.7 dispatches load/save to soundfile/torchcodec, and
-        # the engine cannot read its own bundled reference clip without one
-        # (#2100). Pulling soundfile alongside the editable install keeps
-        # every audio read inside this engine's own venv.
-        install_args=("-e", "{checkout}", "soundfile"),
-        install_revision="audio-backend-v1",
-        uses_cuda_index=True,
-        # Upstream pins torch/torchaudio==2.7.0; a ROCm host takes +rocm6.3.
-        upstream_torch="2.7.0",
-        # torch 2.7 (CUDA build on NVIDIA hosts) + transformers + onnxruntime.
-        # The model and its audio tokenizer download on first synthesis.
-        required_bytes=8 * _GIB,
-        installed_probe=_in_app_env("moss_tts_nano"),
-        host_supported=_no_intel_mac(
-            "MOSS-TTS-Nano pins a PyTorch version that has no Intel Mac build."
         ),
     ),
     # A reviewed commit (2026-05-25) plus the Matcha-TTS submodule it imports.

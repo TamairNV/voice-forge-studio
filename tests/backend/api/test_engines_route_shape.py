@@ -328,45 +328,19 @@ def test_cpu_api_describes_canonical_omnivoice_as_in_process(fresh_app, monkeypa
 
     _force_host(monkeypatch, "cpu")
     _pin_omnivoice_inventory(monkeypatch, engines, with_alias=False)
-    response = _asgi_request(fresh_app, "GET", "/engines")
-    canonical = {row["id"]: row for row in response.json()["tts"]["backends"]}["omnivoice"]
-    assert (response.status_code, canonical["isolation_mode"]) == (200, "in-process")
+    by_id = {row["id"]: row for row in engines.tts_backend.list_backends(include_hidden=True)}
+    assert by_id["omnivoice"]["isolation_mode"] == "in-process"
 
 
-def test_mps_api_hides_alias_but_accepts_it_for_selection(fresh_app, monkeypatch):
-    from api.routers import engines
+def test_gpu_compat_omnivoice_includes_rocm_and_xpu(fresh_app, monkeypatch):
+    """OmniVoice uses torch's HIP-backed CUDA device on ROCm, and
+    loads on Intel XPU through the same get_best_device()."""
+    from services import tts_backend
 
-    _force_host(monkeypatch, "mps")
-    monkeypatch.delenv("OMNIVOICE_TTS_BACKEND", raising=False)
-    _pin_omnivoice_inventory(monkeypatch, engines, with_alias=True)
-    monkeypatch.setattr(engines.tts_backend, "active_backend_id", lambda: "omnivoice-subprocess")
-    catalogue = _asgi_request(fresh_app, "GET", "/engines/tts").json()
-    ids = [entry["id"] for entry in catalogue["backends"]]
-    assert ids == ["omnivoice"]
-    assert (catalogue["active"], catalogue["backends"][0]["isolation_mode"]) == (
-        "omnivoice",
-        "subprocess",
-    )
-
-    selection = _asgi_request(
-        fresh_app,
-        "POST",
-        "/engines/select",
-        json={"backend_id": "omnivoice-subprocess", "family": "tts"},
-    )
-    assert (selection.status_code, selection.json()["active"]) == (200, "omnivoice-subprocess")
-
-
-def test_gpu_compat_omnivoice_variants_include_rocm_and_xpu(fresh_app, monkeypatch):
-    """Both OmniVoice paths use torch's HIP-backed CUDA device on ROCm, and
-    load on Intel XPU through the same get_best_device()."""
     _force_host(monkeypatch, "rocm")
-    client = _client(fresh_app)
-    r = client.get("/engines")
-    by_id = {b["id"]: b for b in r.json()["tts"]["backends"]}
+    by_id = {b["id"]: b for b in tts_backend.list_backends(include_hidden=True)}
     expected = {"cuda", "rocm", "xpu", "mps", "cpu"}
     assert set(by_id["omnivoice"]["gpu_compat"]) == expected
-    assert set(by_id["omnivoice-subprocess"]["gpu_compat"]) == expected
 
 
 # ── select_engine host-routing gate (no silent CPU fallback) ────────────────
@@ -385,28 +359,26 @@ def _force_cpu_host(monkeypatch):
     _force_host(monkeypatch, "cpu")
 
 
-def test_omnivoice_variants_route_to_rocm(fresh_app, monkeypatch):
+def test_omnivoice_routes_to_rocm(fresh_app, monkeypatch):
+    from services import tts_backend
+
     _force_host(monkeypatch, "rocm")
-
-    body = _client(fresh_app).get("/engines").json()
-    by_id = {b["id"]: b for b in body["tts"]["backends"]}
-    for backend_id in ("omnivoice", "omnivoice-subprocess"):
-        assert by_id[backend_id]["effective_device"] == "rocm"
-        assert by_id[backend_id]["routing_status"] == "accelerated"
-        assert by_id[backend_id]["routing_reason"] is None
+    by_id = {b["id"]: b for b in tts_backend.list_backends(include_hidden=True)}
+    assert by_id["omnivoice"]["effective_device"] == "rocm"
+    assert by_id["omnivoice"]["routing_status"] == "accelerated"
+    assert by_id["omnivoice"]["routing_reason"] is None
 
 
-def test_omnivoice_variants_route_to_intel_xpu(fresh_app, monkeypatch):
+def test_omnivoice_routes_to_intel_xpu(fresh_app, monkeypatch):
     """Before "xpu" was declared, an Arc host showed a CPU fallback (and got
     CPU-sized budgets) while the model was actually loaded on the GPU."""
-    _force_host(monkeypatch, "xpu")
+    from services import tts_backend
 
-    body = _client(fresh_app).get("/engines").json()
-    by_id = {b["id"]: b for b in body["tts"]["backends"]}
-    for backend_id in ("omnivoice", "omnivoice-subprocess"):
-        assert by_id[backend_id]["effective_device"] == "xpu"
-        assert by_id[backend_id]["routing_status"] == "accelerated"
-        assert by_id[backend_id]["routing_reason"] is None
+    _force_host(monkeypatch, "xpu")
+    by_id = {b["id"]: b for b in tts_backend.list_backends(include_hidden=True)}
+    assert by_id["omnivoice"]["effective_device"] == "xpu"
+    assert by_id["omnivoice"]["routing_status"] == "accelerated"
+    assert by_id["omnivoice"]["routing_reason"] is None
 
 
 def test_select_blocks_engine_unavailable_on_this_host(fresh_app, monkeypatch):
@@ -589,9 +561,9 @@ def test_get_engines_asr_family_shape(fresh_app):
     body = r.json()
     assert isinstance(body["active"], str) and body["active"]
     by_id = {b["id"]: b for b in body["backends"]}
-    assert {"whisperx", "faster-whisper", "openai-compat-asr"}.issubset(by_id)
+    assert {"whisperx", "faster-whisper", "faster-whisper-isolated"}.issubset(by_id)
     # Install hints power the picker's tooltips (parity with TTS).
-    assert by_id["openai-compat-asr"]["install_hint"]
+    assert by_id["faster-whisper"]["install_hint"]
     for entry in by_id.values():
         missing = _REQUIRED_KEYS - entry.keys()
         assert not missing, f"asr entry {entry['id']!r} missing: {missing}"
@@ -632,10 +604,10 @@ def test_select_mlx_audio_curated_key_persists(fresh_app, monkeypatch):
     _make_mlx_audio_available(monkeypatch)
     r = _client(fresh_app).post(
         "/engines/select",
-        json={"family": "tts", "backend_id": "mlx-audio", "model_id": "outetts"},
+        json={"family": "tts", "backend_id": "mlx-audio", "model_id": "voxcpm2"},
     )
     assert r.status_code == 200, r.text
-    assert _prefs.get("mlx_audio_model_id") == "outetts"
+    assert _prefs.get("mlx_audio_model_id") == "voxcpm2"
     assert _prefs.get("tts_backend") == "mlx-audio"
 
 
@@ -738,8 +710,8 @@ def test_engines_response_curated_models_only_on_mlx_audio(fresh_app):
     by_id = {b["id"]: b for b in body["tts"]["backends"]}
     assert "curated_models" in by_id["mlx-audio"]
     assert "active_model_id" in by_id["mlx-audio"]
-    assert "curated_models" not in by_id["omnivoice"]
-    assert "active_model_id" not in by_id["omnivoice"]
+    assert "curated_models" not in by_id["voxcpm2"]
+    assert "active_model_id" not in by_id["voxcpm2"]
 
 
 # ── /engines/{id}/health round-trip ────────────────────────────────────────
@@ -817,8 +789,6 @@ def test_server_mode_engine_mutations_require_api_key(fresh_app, monkeypatch):
     client = _client(fresh_app, host="172.17.0.1")
 
     requests = [
-        ("post", "/engines/translation/deep-translator/install", None),
-        ("delete", "/engines/translation/deep-translator", None),
         ("post", "/engines/sidecar/indextts2/install", None),
         ("delete", "/engines/sidecar/indextts2/install", None),
         ("post", "/engines/omnivoice/selftest", None),
@@ -1258,8 +1228,8 @@ def test_setup_snippet_present_for_path_gated_engines(fresh_app):
     assert by_id["indextts2"]["setup_snippet"] == (
         "export OMNIVOICE_INDEXTTS_DIR=/path/to/index-tts"
     )
-    # A bundled engine has no path gate → null.
-    assert by_id["omnivoice"]["setup_snippet"] is None
+    # A non-path-gated engine has no path gate -> null.
+    assert by_id["voxcpm2"]["setup_snippet"] is None
 
 
 # ── HF-token leak prevention (T-02-12) ─────────────────────────────────────

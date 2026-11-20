@@ -61,14 +61,6 @@ ALLOWLIST: dict[str, str] = {
         "admin session plus cookie CSRF before minting it."
     ),
     # ── WebSockets (shared inline authorization before accept) ──
-    "WS /ws/transcribe": (
-        "Saves dictation history; inline Origin check plus is_local_host or "
-        "ws_remote_authorized rejects unauthorized handshakes with 1008 before accept()."
-    ),
-    "WS /v1/audio/transcriptions/stream": (
-        "Same ws_transcribe handler as /ws/transcribe; its inline Origin and local-host or "
-        "remote-admin principal checks run before accepting this platform path too."
-    ),
     "WS /ws/tts": (
         "Streams audio; inline require_ws_access checks Origin and the local, trusted-network "
         "or remote-admin principal before accept. The HTTP-only PIN does not authorize a socket."
@@ -85,61 +77,13 @@ ALLOWLIST: dict[str, str] = {
         "Core TTS generation — the primary consumption route, open to PIN/trusted-network "
         "consumers; needs the consumer reads/admin writes router guard plus @consumer_generation."
     ),
-    "POST /dub/upload": (
-        "Dub consumption: accepts the source video for a new job; open to PIN/trusted-network "
-        "consumers, still missing the require_consumer_reads_admin_writes router guard."
-    ),
-    "POST /dub/ingest-url": (
-        "Dub consumption: starts a yt-dlp fetch for a job's source; consumer-reachable by "
-        "design, still missing the consumer reads/admin writes router guard."
-    ),
-    "POST /dub/transcribe/{job_id}": (
-        "Dub consumption: transcribes a job's source audio; open to consumers by design, "
-        "still missing the consumer reads/admin writes router guard."
-    ),
-    "POST /dub/parse-subtitle-text": (
-        "Stateless subtitle parser: returns cues from caller-supplied text without writing "
-        "a job or reading host files; no separate route authorization dependency."
-    ),
-    "POST /dub/import-srt/{job_id}": (
-        "KNOWN GAP: replaces an existing job's stored segments from an SRT; importing "
-        "stored content is documented admin-only but this route has no dependency yet."
-    ),
-    "POST /dub/use-downloaded-captions/{job_id}": (
-        "KNOWN GAP: replaces a stored job's segments with its downloaded captions; editing "
-        "stored content is documented admin-only but this route has no dependency yet."
-    ),
-    "POST /dub/cleanup-segments/{job_id}": (
-        "KNOWN GAP: merges and rewrites stored job segments; editing stored content is "
-        "documented admin-only but this route has no dependency yet."
-    ),
-    "POST /dub/sync-transcript/{job_id}": (
-        "KNOWN GAP: rewrites a stored job's transcript and segments; editing stored content "
-        "is documented admin-only but this route has no dependency yet."
-    ),
-    "POST /dub/abort/{job_id}": (
-        "Dub consumption: aborts a running job by ID with no per-caller ownership check; "
-        "still missing the consumer reads/admin writes router guard."
-    ),
-    "POST /dub/prosody-mirror/{job_id}": (
-        "Dub consumption: runs the prosody-mirror pass over a job; open to consumers by design, "
-        "still missing the consumer reads/admin writes router guard."
-    ),
-    "POST /dub/qc/{job_id}": (
-        "Dub consumption: runs the quality-control pass over a job; open to consumers by design, "
-        "still missing the consumer reads/admin writes router guard."
-    ),
-    "POST /preview/upload": (
-        "Dub consumption: accepts a short preview clip for the preview renderer; open to "
-        "consumers by design, still missing the consumer reads/admin writes router guard."
-    ),
     "POST /tasks/cancel/{task_id}": (
         "Task consumption: cancels a task by ID with no per-caller ownership check; still "
         "missing the consumer reads/admin writes router guard."
     ),
     # ── Stored-content edit/delete — known gaps, documented as admin-only ──
     # docs/api-auth.md §Admin routes: "Editing, deleting and importing stored
-    # content ... also uses this admin gate." These five do not yet.
+    # content ... also uses this admin gate." These three do not yet.
     "DELETE /history": (
         "KNOWN GAP: deleting stored generation history is documented admin-only but has no "
         "dependency yet; requires the consumer reads/admin writes guard."
@@ -151,14 +95,6 @@ ALLOWLIST: dict[str, str] = {
     "PUT /history/{history_id}/starred": (
         "KNOWN GAP: editing stored generation metadata is documented admin-only but has no "
         "dependency yet; requires the consumer reads/admin writes guard."
-    ),
-    "DELETE /dub/history": (
-        "KNOWN GAP: clearing stored dub history is documented admin-only but has no dependency "
-        "yet; requires the consumer reads/admin writes guard."
-    ),
-    "DELETE /dub/history/{history_id}": (
-        "KNOWN GAP: deleting one stored dub job is documented admin-only but has no dependency "
-        "yet; requires the consumer reads/admin writes guard."
     ),
     # ── First-run setup: must work before any admin credential exists ─────
     "POST /models/install": (
@@ -186,22 +122,6 @@ ALLOWLIST: dict[str, str] = {
         "Removes a local licence receipt only, keeping files and evidence; storage mutation, "
         "still missing the admin gate."
     ),
-    # ── Opt-in SoniTranslate sidecar ─────────────────────────────────────
-    # docs/api-auth.md lists engine install/uninstall as admin-class; these
-    # three are still open (only /engines/sonitranslate/dub carries
-    # require_native_access).
-    "POST /engines/sonitranslate/install": (
-        "KNOWN GAP: installs an opt-in external engine (~15 GB clone), admin-class per "
-        "docs/api-auth.md but carries no dependency yet."
-    ),
-    "POST /engines/sonitranslate/start": (
-        "KNOWN GAP: starts the installed SoniTranslate sidecar process, admin-class per "
-        "docs/api-auth.md but carries no dependency yet."
-    ),
-    "POST /engines/sonitranslate/stop": (
-        "KNOWN GAP: stops the SoniTranslate sidecar process, admin-class per docs/api-auth.md "
-        "but carries no dependency yet."
-    ),
     # ── Catalog browsing side effects (profile creation / consent) ────────
     "PUT /archetypes/previews": (
         "KNOWN GAP: changes gallery consent and can enable outbound fetching; this "
@@ -215,10 +135,6 @@ ALLOWLIST: dict[str, str] = {
         "KNOWN GAP: saves an archetype recipe as a stored profile; importing stored "
         "content is documented admin-only but this route has no dependency yet."
     ),
-    "POST /community/items/{item_id}/use": (
-        "KNOWN GAP: imports a community recipe or verified clip into a stored profile; "
-        "importing stored content is documented admin-only but has no dependency here yet."
-    ),
     # ── Computation on caller input and host-side tools ──────────────────
     "POST /tools/incremental": (
         "Pure function: plans which dub segments need regenerating from caller-supplied "
@@ -231,10 +147,6 @@ ALLOWLIST: dict[str, str] = {
     "POST /tools/rate-fit": (
         "KNOWN GAP: slot fitting can call the configured LLM provider; no authorization "
         "dependency yet. The privileged tool gate is handled by the route-hardening PR."
-    ),
-    "POST /tools/video-context/{job_id}": (
-        "KNOWN GAP: runs FFmpeg analysis on a stored job's validated source path; this "
-        "host-side media tool has no authorization dependency yet."
     ),
     "POST /tools/normalize-speech": (
         "Bounded in-memory peak-normalise of a caller-supplied WAV, re-marked synthetic via "
@@ -360,11 +272,11 @@ def test_route_counts_are_sane(live_auth_routes):
     assert live_auth_routes["count"] == len(routes)
     assert len(routes) >= 180, (
         f"Only {len(routes)} routes registered — a router likely failed to mount. "
-        "Expected 300+."
+        "Expected 200+."
     )
-    assert len(mutating) >= 150, (
+    assert len(mutating) >= 90, (
         f"Only {len(mutating)} mutating routes registered — the dump or a router "
-        "mount is broken. Expected 190+."
+        "mount is broken. Expected 100+."
     )
 
 

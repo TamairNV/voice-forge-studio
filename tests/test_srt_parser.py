@@ -232,18 +232,6 @@ def test_srt_text_after_a_blank_line_inside_a_cue_is_still_kept():
     assert [s["text"] for s in result.segments] == ["First\nstill first", "Second"]
 
 
-def test_paste_endpoint_returns_webvtt_cues():
-    from fastapi.testclient import TestClient
-    from main import app
-
-    client = TestClient(app, client=("127.0.0.1", 50000))
-    res = client.post(
-        "/dub/parse-subtitle-text",
-        json={"text": "WEBVTT\n\nintro\n00:01.000 --> 00:02.000\nHola\n\nNOTE x\n\n00:03.000 --> 00:04.000\nAdios\n"},
-    )
-    assert res.status_code == 200, res.text
-    assert [(c["start"], c["text"]) for c in res.json()["segments"]] == [(1.0, "Hola"), (3.0, "Adios")]
-
 def _texts(srt: str):
     result = parse_srt(srt)
     return [seg["text"] for seg in result.segments], result.skipped_cues

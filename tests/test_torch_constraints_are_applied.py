@@ -151,48 +151,6 @@ def test_the_docker_guard_covers_torchvision():
     )
 
 
-def test_the_colab_notebook_passes_the_constraint():
-    nb = json.loads(_NOTEBOOK.read_text(encoding="utf-8"))
-    installs = [
-        "".join(c["source"]) for c in nb["cells"]
-        if c["cell_type"] == "code" and '"uv", "pip", "install"' in "".join(c["source"])
-    ]
-    assert installs, "no uv pip install cell found in the Colab notebook"
-    for src in installs:
-        args = _install_argv(src)
-        assert args, "could not parse the install command's argument list"
-        # The ARGUMENT LIST, not the cell text: a substring check passes when
-        # --constraint is deleted from run([...]) but its explanatory comment
-        # survives, which is the shape this whole PR is about (CodeRabbit).
-        assert "--constraint" in args, (
-            "the Colab install cell resolves the torch trio unconstrained — the "
-            "exact path #1357 was reported on"
-        )
-        i = args.index("--constraint")
-        assert args[i + 1:i + 2] == ["deploy/torch-constraints.txt"], (
-            f"--constraint is not followed by the constraints file: {args}"
-        )
-
-
-def _install_argv(cell_source: str) -> list:
-    """String literals of the `run([...])` argument list in a notebook cell.
-
-    Parsed rather than pattern-matched so a comment mentioning --constraint
-    cannot satisfy the assertion above.
-    """
-    import ast
-
-    tree = ast.parse(cell_source)
-    for node in ast.walk(tree):
-        if (isinstance(node, ast.Call) and node.args
-                and isinstance(node.args[0], ast.List)):
-            argv = [e.value for e in node.args[0].elts
-                    if isinstance(e, ast.Constant) and isinstance(e.value, str)]
-            if "install" in argv and "pip" in argv:
-                return argv
-    return []
-
-
 # --- [tool.uv] override-dependencies on the same `uv pip install` paths (#3275) ---
 # The override that lifts gradio's `pillow<13` cap lives in pyproject, which
 # `uv pip install` applies only from the project directory with a recent uv
@@ -251,28 +209,6 @@ def test_docker_override_guard_parses_lines_and_enforces_versions(
     else:
         exec(args[3], {})
         assert "uv overrides applied: pillow 13.0.0" in capsys.readouterr().out
-
-
-def test_the_colab_notebook_passes_the_overrides():
-    nb = json.loads(_NOTEBOOK.read_text(encoding="utf-8"))
-    installs = [
-        "".join(c["source"]) for c in nb["cells"]
-        if c["cell_type"] == "code" and '"uv", "pip", "install"' in "".join(c["source"])
-    ]
-    for src in installs:
-        args = _install_argv(src)
-        i = args.index("--override")
-        assert args[i + 1:i + 2] == ["deploy/uv-overrides.txt"], args
-
-
-def test_the_colab_notebook_updates_a_reused_clone():
-    # A clone from an earlier session lacked deploy/uv-overrides.txt, so the
-    # install cell failed on the file it now passes (#3281 review).
-    nb = json.loads(_NOTEBOOK.read_text(encoding="utf-8"))
-    src = next("".join(c["source"]) for c in nb["cells"] if "# 2a. Clone the repo" in "".join(c["source"]))
-    reuse = src[src.index("# 2a."):src.index("else:", src.index("# 2a."))]
-    assert '"pull", "--ff-only"' in reuse
-    assert 'shutil.rmtree(os.path.join(REPO_DIR, "frontend", "dist")' in reuse
 
 
 # --- the remaining `[tool.uv] constraint-dependencies` (security floors) ---
@@ -355,20 +291,3 @@ def test_security_floors_cli_check_and_requirements(monkeypatch, capsys):
     assert mod.main(["x", "requirements"]) == 0 and capsys.readouterr().out == ""
     assert mod.main(["x", "check"]) == 0
     assert "security floors hold: msgpack 1.2.3" in capsys.readouterr().out
-
-
-def test_the_colab_notebook_passes_the_security_constraints():
-    nb = json.loads(_NOTEBOOK.read_text(encoding="utf-8"))
-    installs = [
-        "".join(c["source"]) for c in nb["cells"]
-        if c["cell_type"] == "code" and '"uv", "pip", "install"' in "".join(c["source"])
-    ]
-    assert installs
-    for src in installs:
-        args = _install_argv(src)
-        pairs = [args[i + 1] for i, a in enumerate(args[:-1]) if a == "--constraint"]
-        assert "deploy/security-constraints.txt" in pairs, args
-        # Packages Colab already ships are raised to their floors, then checked.
-        tree_src = src[src.index('"deploy/security_floors.py", "requirements"'):]
-        assert "security floor upgrades" in tree_src
-        assert '"deploy/security_floors.py", "check"' in tree_src

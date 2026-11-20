@@ -1,4 +1,4 @@
-"""Media tools — ffmpeg / ffprobe / yt-dlp as an invisible internal concern.
+"""Media tools - ffmpeg / ffprobe as an invisible internal concern.
 
 Most users should never learn what ffmpeg is. This module makes the media
 engine self-contained: it reports where each tool comes from, acquires a
@@ -34,23 +34,6 @@ detection. Two options were audited:
     Stdlib-only (urllib honors HTTP(S)_PROXY), identical behavior on
     macOS (arm64 + x86_64), Windows x64, and Linux (x64 + arm64), and zero
     new Python dependencies.
-
-yt-dlp updates (decision record)
---------------------------------
-yt-dlp is an importable locked dep — never a user-installed requirement.
-But site support rots faster than app releases, so Settings offers a
-user-triggered "Update". A plain in-venv upgrade was audited and rejected:
-the app venv is uv-managed (no pip module), and the updater's drift sync
-(#1029/#1030, ``uv sync --frozen --inexact``) preserves only packages *not*
-in the lockfile — yt-dlp IS locked, so an in-venv upgrade would be silently
-reverted on the next app update, and the frozen build has no installer at
-all. Instead we install the new wheel (pure-python, no required deps —
-matching the plain ``yt-dlp`` spec pinned in pyproject) into an **overlay
-directory** under ``DATA_DIR`` — SHA-256-verified against PyPI's own
-metadata — and prepend it to ``sys.path`` at startup. It survives app
-updates and drift syncs, works identically in source and frozen builds, and
-"Restore tested version" is simply deleting the overlay: the locked wheel
-underneath was never touched.
 """
 from __future__ import annotations
 
@@ -91,8 +74,6 @@ _FFBIN_SHA256 = {
     "win32": ("92662c2241e93fe71b3f3a01e94a0b0dc8cfad726019f96b83bc109ce44c5d0b", 72065209),
 }
 
-_PYPI_YTDLP_URL = "https://pypi.org/pypi/yt-dlp/json"
-
 _DOWNLOAD_TIMEOUT_S = 30  # per-read socket timeout; downloads stream in chunks
 _CHUNK = 256 * 1024
 
@@ -111,7 +92,6 @@ TOOLS = ("ffmpeg", "ffprobe")
 _lock = threading.Lock()
 _ops: dict[str, dict] = {
     "acquire": {"state": "idle", "progress": 0.0, "error": None},
-    "ytdlp_update": {"state": "idle", "progress": 0.0, "error": None, "version": None},
 }
 _version_cache: dict[str, str] = {}
 
@@ -141,7 +121,7 @@ def _platform_key() -> str:
 
 
 def media_tools_dir() -> str:
-    """User-writable root for acquired binaries + the yt-dlp overlay.
+    """User-writable root for acquired binaries.
 
     Lives in DATA_DIR so it survives app updates (the app bundle / venv are
     replaced wholesale on update; DATA_DIR is user state) and is writable in
@@ -424,40 +404,6 @@ def _resolve(tool: str) -> str | None:
     return ffmpeg_utils.find_ffprobe()
 
 
-def _ytdlp_status() -> dict:
-    """yt-dlp is a python module, not a binary — status reads its version
-    without paying the full package import."""
-    info: dict = {"tool": "yt-dlp", "ok": False, "path": None, "version": None,
-                  "origin": "bundled", "overlay_version": None,
-                  "baseline_version": prefs.get("media_tools.ytdlp_baseline")}
-    try:
-        import importlib.util
-        spec = importlib.util.find_spec("yt_dlp")
-        origin = getattr(spec, "origin", None)
-        if origin:
-            pkg_dir = os.path.dirname(origin)
-            info["path"] = pkg_dir
-            info["ok"] = True
-            info["version"] = _read_ytdlp_version(pkg_dir)
-            if os.path.realpath(pkg_dir).startswith(
-                    os.path.realpath(_ytdlp_overlay_dir()) + os.sep):
-                info["origin"] = "custom"
-    except Exception as e:
-        logger.debug("yt_dlp spec lookup failed: %s", e)
-    ov = _read_ytdlp_version(os.path.join(_ytdlp_overlay_dir(), "yt_dlp"))
-    info["overlay_version"] = ov
-    return info
-
-
-def _read_ytdlp_version(pkg_dir: str) -> str | None:
-    try:
-        with open(os.path.join(pkg_dir, "version.py"), encoding="utf-8") as f:
-            m = re.search(r"__version__\s*=\s*['\"]([^'\"]+)['\"]", f.read())
-        return m.group(1) if m else None
-    except OSError:
-        return None
-
-
 def status() -> dict:
     """Full media-tools report: per-tool {ok, path, version, origin} + op states."""
     tools = {}
@@ -470,7 +416,6 @@ def status() -> dict:
             "version": _tool_version(path) if path else None,
             "origin": _classify_origin(tool, path) if path else None,
         }
-    tools["ytdlp"] = _ytdlp_status()
     ops = _op_snapshot()
     return {
         "ready": tools["ffmpeg"]["ok"] and tools["ffprobe"]["ok"],
@@ -577,154 +522,3 @@ def restore_bundled(tool: str) -> dict:
         if not _resolve(tool):
             acquire_bundled()
     return status()["tools"][tool]
-
-
-# ── yt-dlp overlay ──────────────────────────────────────────────────────────
-
-def _ytdlp_overlay_dir() -> str:
-    return os.path.join(media_tools_dir(), "ytdlp_overlay")
-
-
-def activate_ytdlp_overlay() -> bool:
-    """Prepend the user-updated yt-dlp overlay to sys.path. Called once at
-    backend startup, before anything imports yt_dlp."""
-    overlay = _ytdlp_overlay_dir()
-    if os.path.isdir(os.path.join(overlay, "yt_dlp")) and overlay not in sys.path:
-        sys.path.insert(0, overlay)
-        logger.info("media-tools: yt-dlp overlay active (%s)",
-                    _read_ytdlp_version(os.path.join(overlay, "yt_dlp")) or "?")
-        return True
-    return False
-
-
-def _fetch_pypi_ytdlp() -> tuple[str, str, str]:
-    """(version, wheel_url, sha256) of the latest yt-dlp wheel on PyPI."""
-    import json
-    import urllib.request
-    req = urllib.request.Request(_PYPI_YTDLP_URL, headers={"User-Agent": "VoiceStudio"})
-    with urllib.request.urlopen(req, timeout=_DOWNLOAD_TIMEOUT_S) as resp:
-        meta = json.load(resp)
-    version = meta["info"]["version"]
-    for artifact in meta.get("urls", []):
-        if artifact.get("packagetype") == "bdist_wheel" and \
-                artifact["filename"].endswith("py3-none-any.whl"):
-            return version, artifact["url"], artifact["digests"]["sha256"]
-    raise RuntimeError(f"no universal wheel found for yt-dlp {version}")
-
-
-def update_ytdlp(wait: bool = False) -> dict:
-    """Install the newest yt-dlp into the overlay dir (background thread).
-
-    The wheel is verified against PyPI's own sha256 digest before a single
-    byte lands in the overlay; the swap is atomic (staged dir + os.replace).
-    Takes effect on the next backend start (the running process already
-    imported the old module) — the UI shows the restart affordance.
-    """
-    with _lock:
-        if _ops["ytdlp_update"]["state"] == "running":
-            return dict(_ops["ytdlp_update"])
-        _ops["ytdlp_update"].update(state="running", progress=0.0, error=None, version=None)
-
-    def _worker():
-        try:
-            version = _do_update_ytdlp()
-            _set_op("ytdlp_update", state="done", progress=1.0, version=version)
-            logger.info("media-tools: yt-dlp overlay updated to %s", version)
-        except Exception as e:
-            logger.warning("media-tools: yt-dlp update failed: %s", e)
-            _set_op("ytdlp_update", state="error", error=str(e)[:300])
-
-    if wait:
-        _worker()
-    else:
-        threading.Thread(target=_worker, name="media-tools-ytdlp", daemon=True).start()
-    return _op_snapshot()["ytdlp_update"]
-
-
-def _do_update_ytdlp() -> str:
-    version, url, sha = _fetch_pypi_ytdlp()
-
-    # Record the locked ("tested") version once, before the first overlay
-    # ever activates — that's what "Restore tested version" reverts to.
-    if prefs.get("media_tools.ytdlp_baseline") is None:
-        current = _ytdlp_status()
-        if current["origin"] == "bundled" and current["version"]:
-            prefs.set_("media_tools.ytdlp_baseline", current["version"])
-
-    overlay = _ytdlp_overlay_dir()
-    os.makedirs(media_tools_dir(), exist_ok=True)
-    with tempfile.TemporaryDirectory(dir=media_tools_dir()) as tmp:
-        whl = os.path.join(tmp, "yt_dlp.whl")
-        _download(url, whl, sha, None, op="ytdlp_update")
-        staged = os.path.join(tmp, "staged")
-        with zipfile.ZipFile(whl) as zf:
-            for member in zf.infolist():
-                name = member.filename
-                # Only the package itself; wheels carry no absolute paths but
-                # guard against traversal anyway.
-                if not name.startswith("yt_dlp/") or ".." in name:
-                    continue
-                zf.extract(member, staged)
-        got = _read_ytdlp_version(os.path.join(staged, "yt_dlp"))
-        if not got:
-            raise RuntimeError("downloaded wheel has no readable yt_dlp version")
-        _install_staged_directory(staged, overlay)
-    return version
-
-
-_GUARDED_YTDLP_BOOTSTRAP = (
-    "import sys; sys.path.insert(0, sys.argv[1]); "
-    "from core.url_safety import run_guarded_ytdlp; "
-    "sys.exit(run_guarded_ytdlp(sys.argv[2:]))"
-)
-
-
-def guarded_ytdlp_invocation() -> "tuple[list[str], dict[str, str] | None]":
-    """Like :func:`ytdlp_invocation`, with the URL-import policy enforced.
-
-    The subprocess refuses connections to private-network addresses (unless
-    the user opted in), downloads only through yt-dlp's native downloaders and
-    refuses live streams — see ``core.url_safety``. Use it for every yt-dlp run whose input
-    comes from a caller. A build that cannot re-invoke the interpreter falls
-    back to the plain CLI; callers still validate the URL up front.
-    """
-    argv, env = ytdlp_invocation()
-    if argv[:3] != [sys.executable, "-m", "yt_dlp"]:
-        return argv, env
-    backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    return [sys.executable, "-c", _GUARDED_YTDLP_BOOTSTRAP, backend_dir], env
-
-
-def ytdlp_invocation() -> "tuple[list[str], dict[str, str] | None]":
-    """(argv prefix, env-or-None) for running the yt-dlp CLI.
-
-    Prefers ``[sys.executable, -m, yt_dlp]`` so the CLI always matches the
-    module the app ships (or the user's overlay — propagated via PYTHONPATH),
-    with no PATH requirement: yt-dlp is never something the user installs.
-    Frozen builds can't re-invoke an interpreter, so they keep the historical
-    PATH lookup as a last resort.
-    """
-    if not getattr(sys, "frozen", False):
-        try:
-            import importlib.util
-            if importlib.util.find_spec("yt_dlp") is not None:
-                env = None
-                overlay = _ytdlp_overlay_dir()
-                if os.path.isdir(os.path.join(overlay, "yt_dlp")):
-                    env = dict(os.environ)
-                    env["PYTHONPATH"] = overlay + os.pathsep + env.get("PYTHONPATH", "")
-                return [sys.executable, "-m", "yt_dlp"], env
-        except Exception as e:
-            logger.debug("yt_dlp module CLI unavailable: %s", e)
-    exe = shutil.which("yt-dlp")
-    return ([exe] if exe else ["yt-dlp"]), None
-
-
-def restore_ytdlp() -> dict:
-    """Delete the overlay — the locked, tested yt-dlp underneath takes over on
-    next start. Always safe: the locked install was never modified."""
-    overlay = _ytdlp_overlay_dir()
-    if _tool_path_exists(overlay):
-        _retry_tool_filesystem(lambda: shutil.rmtree(overlay))
-    _set_op("ytdlp_update", state="idle", progress=0.0, error=None, version=None)
-    return _ytdlp_status()

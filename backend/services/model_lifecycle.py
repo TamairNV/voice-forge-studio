@@ -266,25 +266,6 @@ def list_loaded() -> dict:
         logger.warning("Loaded-model inventory unavailable for transcription")
         degraded_sources.append("transcription")
 
-    # 7. Offline translation can remain resident when the user opts out of the
-    # default post-job release. Keep it visible and manually unloadable.
-    try:
-        from api.routers import dub_translate as dt
-
-        if getattr(dt, "_nllb_model", None) is not None:
-            models.append({
-                "id": "translation:nllb",
-                "name": "NLLB-200 Translation",
-                "checkpoint": dt._NLLB_REPO_ID,
-                "device": str(getattr(dt, "_nllb_device", None) or "cpu"),
-                "vram_mb": 0,
-                "unloadable": True,
-                "note": "released after translation by default",
-            })
-    except Exception:
-        logger.warning("Loaded-model inventory unavailable for translation")
-        degraded_sources.append("translation")
-
     # System memory snapshot — free/total RAM (and VRAM on a dedicated GPU) plus
     # a low-memory advisory, so the panel can show pressure instead of leaving
     # the 16 GB-Mac OOM class invisible until the backend dies.
@@ -359,14 +340,6 @@ def _unload_blocking(model_id: str) -> dict:
         mm.free_vram()
         return {"unloaded": model_id, "success": True}
 
-    if model_id == "translation:nllb":
-        from api.routers import dub_translate as dt
-
-        if getattr(dt, "_nllb_model", None) is None:
-            return {"unloaded": model_id, "success": False, "reason": "not loaded"}
-        dt._unload_nllb()
-        return {"unloaded": model_id, "success": True}
-
     # In-process engines (#1247). `list_loaded_models` has advertised these as
     # `engine:<id>` with `"unloadable": True` since they were made visible in
     # the panel — but this dispatcher never grew a branch for them, so pressing
@@ -409,7 +382,7 @@ async def unload_all() -> dict:
     """Release shared/alternate TTS, diarisation, sidecars, dictation and translation."""
     results = {}
     model_ids = [
-        "tts", "diarization", "sidecars", "capture-asr", "transcription-asr", "translation:nllb",
+        "tts", "diarization", "sidecars", "capture-asr", "transcription-asr",
     ]
     try:
         model_ids.extend(

@@ -193,7 +193,7 @@ def test_remote_tts_profile_is_not_changed_by_parent_test(monkeypatch, failed_gp
     assert profile["routing_status"] == "accelerated"
 
 
-@pytest.mark.parametrize("name", ["VoxCPM2Backend", "MossTTSNanoBackend", "CosyVoiceBackend", "SherpaOnnxBackend"])
+@pytest.mark.parametrize("name", ["VoxCPM2Backend", "CosyVoiceBackend"])
 def test_other_tts_loaders_do_not_claim_parent_fallback(failed_gpu, name):
     from core.device_caps import HostCaps
     from services import tts_backend

@@ -1,7 +1,5 @@
 """Source-install ROCm torch handling in scripts/setup.py, and the no-sync dev launcher."""
 import importlib.util
-import json
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -126,20 +124,3 @@ def test_main_platform_gate(monkeypatch, setup_mod, plat, runs):
     monkeypatch.setattr(setup_mod, "_find_compat_dir", lambda: None)
     setup_mod.main()
     assert bool(hits) is runs
-
-
-@pytest.mark.parametrize("variant", [None, "auto", " ROCm "])
-def test_launcher_never_resyncs(variant):
-    code = (
-        "import * as m from './scripts/dev-backend.mjs';"
-        "console.log(JSON.stringify({run: m.uvRunArgs(process.env), base: m.uvicornArgs({})}));"
-    )
-    env = {"PATH": os.environ["PATH"]}
-    if variant is not None:
-        env["OMNIVOICE_TORCH_VARIANT"] = variant
-    res = subprocess.run(["node", "--input-type=module", "-e", code], cwd=REPO, env=env,
-                         capture_output=True, text=True, check=True)
-    data = json.loads(res.stdout)
-    expected = list(data["base"])
-    expected.insert(1, "--no-sync")
-    assert data["run"] == expected

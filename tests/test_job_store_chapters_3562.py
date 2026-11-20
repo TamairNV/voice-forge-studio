@@ -33,14 +33,11 @@ def _chapter(jid, index, *, record=True, kind="chapter"):
 
 
 def test_finished_chapters_outlive_the_event_cap():
-    from api.routers.audiobook import _chapters_done
-
     jid = _job()
     for i in range(600):
         _chapter(jid, i)
     assert len(job_store.events_since(jid, 0, limit=10_000)) == job_store._EVENT_CAP_PER_JOB
     assert job_store.completed_chapters(jid) == set(range(600))
-    assert _chapters_done(jid) == 600
 
 
 def test_duplicates_count_once_and_failures_never_count():

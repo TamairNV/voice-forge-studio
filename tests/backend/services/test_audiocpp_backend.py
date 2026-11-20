@@ -922,13 +922,6 @@ def test_unload_before_load_is_safe(app_modules):
     app_modules.audiocpp.AudioCPPBackend().unload()
 
 
-def test_registry_resolves_audiocpp(app_modules):
-    assert (
-        app_modules.tts_backend.get_backend_class("audiocpp")
-        is app_modules.audiocpp.AudioCPPBackend
-    )
-
-
 def test_is_available_false_without_binary_gives_reason(app_modules):
     ok, msg = app_modules.audiocpp.AudioCPPBackend.is_available()
     if ok:
@@ -1056,7 +1049,7 @@ def test_requested_compute_family_keeps_probe_failure_fatal(
 
 
 def test_install_hint_present(app_modules):
-    assert "audiocpp" in app_modules.tts_backend._INSTALL_HINTS
+    assert "audiocpp-dots" in app_modules.tts_backend._INSTALL_HINTS
 
 
 def test_no_hf_token_in_module_source(app_modules):

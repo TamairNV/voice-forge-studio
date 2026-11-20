@@ -35,24 +35,3 @@ def test_inventory_availability_never_launches_runtime_probe(monkeypatch):
     monkeypatch.setattr(readiness, 'package_available', lambda name: True)
     monkeypatch.setattr(probe, '_query', lambda *args: pytest.fail('inventory started child'))
     assert readiness.inventory_only(asr.PyTorchWhisperBackend.is_available)() == (True, 'ready')
-
-@pytest.mark.parametrize('requested', ['auto', 'pytorch-whisper'])
-@pytest.mark.parametrize('usable', [False, True])
-def test_runtime_worker_checks_pipeline_without_recursive_child(monkeypatch, requested, usable):
-    """An ASR worker validates PyTorch locally instead of recursively probing itself."""
-    import sys
-    from types import SimpleNamespace
-
-    worker = importlib.import_module('services._performance_probe')
-    asr = importlib.import_module('services.asr_backend')
-    runtime = importlib.import_module('core.windows_rocm.runtime')
-    readiness = importlib.import_module('services.performance_readiness')
-    probe = importlib.import_module('services.performance_probe')
-    monkeypatch.setattr(runtime, 'initialize_dll_search', lambda: None)
-    monkeypatch.setattr(readiness, 'package_available', lambda name: True)
-    monkeypatch.setattr(asr, '_DEEP_IMPORT_BROKEN', {})
-    monkeypatch.setattr(asr, '_auto_detect', lambda: 'pytorch-whisper')
-    monkeypatch.setattr(probe, '_query', lambda *args: pytest.fail('recursive import child'))
-    monkeypatch.setitem(sys.modules, 'transformers', SimpleNamespace(
-        pipeline=(lambda *args: pytest.fail('model loaded')) if usable else None))
-    assert worker.check('asr', requested) == ('pytorch-whisper', usable)

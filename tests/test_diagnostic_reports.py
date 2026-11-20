@@ -13,14 +13,12 @@ import pytest
 @pytest.fixture
 def reporter(monkeypatch,tmp_path):
     reports = importlib.import_module("core.diagnostic_reports")
-    from core import prefs,config,analytics,diagnostic_app_transport
+    from core import prefs,config
     monkeypatch.delenv('OMNIVOICE_DIAGNOSTICS_DIR',raising=False)
     monkeypatch.delenv('OMNIVOICE_DIAGNOSTICS_DISABLED',raising=False)
     monkeypatch.delenv('OMNIVOICE_ANALYTICS_DISABLED',raising=False)
     monkeypatch.setattr(prefs,'_PREFS_PATH',str(tmp_path/'prefs.json'))
     monkeypatch.setattr(config,'DATA_DIR',str(tmp_path))
-    monkeypatch.setattr(analytics,'_destination',lambda:{})
-    monkeypatch.setattr(diagnostic_app_transport,'app_destination',lambda:{})
     instance=reports.Reporter()
     instance.schema=reports._schema()
     monkeypatch.setattr(reports,'_reporter',instance)
@@ -31,34 +29,6 @@ def reporter(monkeypatch,tmp_path):
 def records(reporter):
     reporter._tick()
     return [json.loads(path.read_text(encoding='utf-8')) for path in reporter.directory.glob('*.json')]
-
-
-def test_fixture_cannot_deliver_to_ambient_app_intake_configuration(reporter, monkeypatch):
-    transport = importlib.import_module('core.diagnostic_app_transport')
-    attempted = []
-
-    class UnexpectedTransport:
-        def __init__(self, destination, *_args, **_kwargs):
-            self.destination = destination
-            self.paused = False
-            attempted.append('created')
-        def capture(self, *_args, **_kwargs):
-            attempted.append('captured')
-            return False
-        def shutdown(self):
-            pass
-
-    # Never contact even this fixture host. A local developer's real runtime
-    # or packaged configuration must be isolated by the shared reporter fixture.
-    monkeypatch.setenv('SUPERMETRY_APP_ID', 'ambient123')
-    monkeypatch.setenv('SUPERMETRY_INGEST_KEY', 'smk_' + 'a' * 39)
-    monkeypatch.setenv('SUPERMETRY_APP_HOST', 'https://ambient.invalid')
-    monkeypatch.setattr(transport, 'AppDiagnosticTransport', UnexpectedTransport)
-    reporter.consent(True)
-    reporter.capture('engine_failed')
-    reporter._tick()
-    assert attempted == []
-    assert reporter.transport is None
 
 
 def test_analytics_consent_does_not_enable_diagnostics(reporter):
@@ -338,74 +308,6 @@ def test_diagnostics_routes_strict_and_admin_guarded(reporter):
     assert records(reporter)[0]['props']['source']=='renderer'
 
 
-def test_standalone_consent_routes_are_available_before_opt_in_and_after_withdrawal(reporter,monkeypatch):
-    from fastapi import FastAPI
-    from fastapi.testclient import TestClient
-    from api.routers.settings import router
-    from api.dependencies import require_admin,require_admin_action
-    from core import analytics,analytics_transport,prefs
-
-    monkeypatch.setattr(analytics,'_destination',lambda:{
-        'site':'localtest123','host':'https://collector.invalid','appUrl':'https://app.invalid',
-    })
-    def no_transport(*args,**kwargs):
-        pytest.fail('Availability/consent queries must not start delivery')
-    monkeypatch.setattr(analytics_transport,'SupermetryTransport',no_transport)
-    app=FastAPI();app.include_router(router)
-    app.dependency_overrides[require_admin]=lambda:None
-    app.dependency_overrides[require_admin_action]=lambda:None
-    with TestClient(app) as client:
-        # Check the first response without waiting for a background worker tick.
-        response=client.get('/api/settings/diagnostics')
-        assert response.status_code==200
-        first=response.json()
-        assert first['available'] is True
-        assert first['enabled'] is False and first['opted_in'] is False
-        assert first['prompted'] is False and first['externally_managed'] is False
-        assert 'diagnostics_epoch' not in prefs._load()
-        reporter._tick()
-        assert reporter.transport is None and not reporter.root.exists()
-
-        allowed=client.put('/api/settings/diagnostics',json={'enabled':True})
-        assert allowed.status_code==200
-        assert allowed.json()['available'] is True and allowed.json()['opted_in'] is True
-        assert client.put('/api/settings/diagnostics',json={'enabled':False}).status_code==200
-        reporter._tick()
-        withdrawn=client.get('/api/settings/diagnostics').json()
-        assert withdrawn['available'] is True and withdrawn['prompted'] is True
-        assert withdrawn['enabled'] is False and withdrawn['opted_in'] is False
-        assert reporter.transport is None
-
-
-@pytest.mark.parametrize('kill',[None,'OMNIVOICE_DIAGNOSTICS_DISABLED','OMNIVOICE_ANALYTICS_DISABLED'])
-def test_standalone_availability_still_requires_destination_and_no_hard_kill(reporter,monkeypatch,kill):
-    from core import analytics
-    assert reporter.status()['available'] is False  # No destination in this fixture.
-    monkeypatch.setattr(analytics,'_destination',lambda:{'site':'localtest123','host':'https://collector.example','appUrl':'https://app.example'})
-    if kill:
-        monkeypatch.setenv(kill,'1')
-        assert reporter.status()['available'] is False
-        assert reporter.consent(True)['enabled'] is False
-        assert not reporter.root.exists()
-    else:
-        assert reporter.status()['available'] is True
-    assert reporter.transport is None
-
-
-def test_managed_availability_uses_desktop_authority_without_local_destination(reporter,monkeypatch,tmp_path):
-    reports = importlib.import_module("core.diagnostic_reports")
-    from core import analytics
-    monkeypatch.setenv('OMNIVOICE_DIAGNOSTICS_DIR',str(tmp_path/'managed'))
-    def no_destination():
-        pytest.fail('Managed Python must not resolve a direct transport destination')
-    monkeypatch.setattr(analytics,'_destination',no_destination)
-    managed=reports.Reporter();managed.schema=reports._schema()
-    assert managed.status()['available'] is True
-    assert managed.status()['enabled'] is False
-    assert managed.transport is None
-    with pytest.raises(PermissionError):managed.consent(True)
-
-
 def test_capture_releases_exception_frames_and_large_inputs(reporter):
     import gc
     import weakref
@@ -560,24 +462,6 @@ def test_real_preload_failure_is_reported_not_silent(reporter,monkeypatch):
     assert 'private' not in json.dumps(saved)
 
 
-def test_stale_transport_callback_cannot_fill_new_epoch_ack_queue(reporter,monkeypatch):
-    from core import analytics,analytics_transport
-    callbacks=[]
-    class Transport:
-        def __init__(self,destination,should_send,*,on_result):callbacks.append(on_result)
-        def shutdown(self):pass
-    monkeypatch.setattr(analytics,'_destination',lambda:{'site':'testdestination','host':'https://collector.example','appUrl':'https://app.example'})
-    monkeypatch.setattr(analytics_transport,'SupermetryTransport',Transport)
-    reporter.consent(True);reporter._tick();old_callback=callbacks[-1]
-    reporter.consent(False);reporter.consent(True);reporter._tick()
-    for _ in range(100):old_callback('f'*32,201)
-    assert reporter.acks.empty()
-    for i in range(64):callbacks[-1](f'{i:032x}',201)
-    assert reporter.acks.qsize()==64
-    reporter.consent(False)
-    assert reporter.acks.empty()
-
-
 def test_canonical_frame_and_queue_limits_can_tighten(reporter):
     reports = importlib.import_module("core.diagnostic_reports")
     reporter.consent(True)
@@ -670,48 +554,6 @@ def test_killed_startup_revokes_without_a_reporting_policy(reporter,monkeypatch,
     assert not restarted.thread.is_alive()
 
 
-@pytest.mark.parametrize('cancelled',[False,True])
-def test_batch_empty_transcript_keeps_cancellation_out_of_diagnostics(reporter,monkeypatch,tmp_path,cancelled):
-    from types import SimpleNamespace
-    from api.routers import batch
-    from services import asr_backend,ffmpeg_utils
-    import subprocess
-    reporter.consent(True)
-    monkeypatch.setattr(batch,'DATA_DIR',str(tmp_path))
-    monkeypatch.setattr(subprocess,'run',lambda *a,**kw:SimpleNamespace(stderr=b'Duration: 00:00:02.00',stdout=b''))
-    monkeypatch.setattr(ffmpeg_utils,'find_ffmpeg',lambda:'ffmpeg')
-    monkeypatch.setattr(ffmpeg_utils,'validate_media_source',lambda *_:None)
-    monkeypatch.setattr(ffmpeg_utils,'require_audio_stream',lambda *_:None)
-    job={'status':'running','video_path':str(tmp_path/'input.mp4'),'langs':['en']}
-    async def transcribe(*a,**kw):
-        if cancelled:job['status']='cancelled'
-        return [],'en'
-    monkeypatch.setattr(asr_backend,'run_transcribe_guarded',transcribe)
-    asyncio.run(batch._run_batch_pipeline('diagnostic-empty',job))
-    assert job['status']==('cancelled' if cancelled else 'failed')
-    assert len(records(reporter))==(0 if cancelled else 1)
-
-
-def test_argos_terminal_error_row_is_reported_without_losing_partial_results(reporter,monkeypatch):
-    from test_dub_translate import _install_fake_argos
-    from api.routers.dub_translate import dub_translate,TranslateRequest
-    import importlib
-    _install_fake_argos(monkeypatch)
-    def translate(text,*_):
-        if text=='private failure':raise RuntimeError('private provider response')
-        return '[es]'+text
-    monkeypatch.setattr(importlib.import_module('argostranslate.translate'),'translate',translate)
-    reporter.consent(True)
-    result=asyncio.run(dub_translate(TranslateRequest(
-        provider='argos',source_lang='en',target_lang='es',quality='fast',
-        segments=[{'id':'bad','text':'private failure'},{'id':'good','text':'Hello'}],
-    )))
-    rows=result['translated']
-    assert len(rows)==2 and rows[0]['error'] and rows[1]['text']=='[es]Hello'
-    saved=records(reporter)
-    assert len(saved)==1 and saved[0]['props']['stage']=='translation'
-    assert saved[0]['props']['error_type']=='RuntimeError'
-    assert 'private' not in json.dumps(saved)
 
 
 def test_asr_compute_deadline_is_not_saved_as_network_error(reporter,monkeypatch):
@@ -753,7 +595,6 @@ def test_startup_failure_restores_loop_handler_and_stops_reporter(reporter,monke
     monkeypatch.setattr(main,'_EAGER',True)
     monkeypatch.setattr(main,'_phase_a_build',lambda:None)
     monkeypatch.setattr(main,'_phase_a_finalize',lambda:None)
-    monkeypatch.setattr(main,'_start_analytics_lifecycle',lambda *_:None)
     monkeypatch.setattr(run_sentinel,'detect_unclean_shutdown',lambda:None)
     monkeypatch.setattr(run_sentinel,'write_sentinel',lambda:None)
     async def fail(_):raise RuntimeError('controlled startup failure')
@@ -801,32 +642,6 @@ def test_reporter_fixture_tracks_runtime_module_replacement(monkeypatch,tmp_path
     finally:fixture.close()
 
 
-def test_cancelled_argos_request_does_not_report_late_worker_failure(reporter,monkeypatch):
-    from concurrent.futures import ThreadPoolExecutor
-    from test_dub_translate import _install_fake_argos
-    from api.routers import dub_translate
-    _install_fake_argos(monkeypatch)
-    entered=threading.Event();release=threading.Event()
-    def translate(*_):
-        entered.set()
-        assert release.wait(2)
-        raise RuntimeError('private provider response')
-    monkeypatch.setattr(importlib.import_module('argostranslate.translate'),'translate',translate)
-    reporter.consent(True)
-    with ThreadPoolExecutor(max_workers=1) as pool:
-        monkeypatch.setattr(dub_translate,'_cpu_pool',pool)
-        async def run():
-            task=asyncio.create_task(dub_translate.dub_translate(dub_translate.TranslateRequest(
-                provider='argos',source_lang='en',target_lang='es',quality='fast',
-                segments=[{'id':'bad','text':'private recording'}],
-            )))
-            try:
-                assert await asyncio.to_thread(entered.wait,1)
-                task.cancel()
-                with pytest.raises(asyncio.CancelledError):await task
-            finally:release.set()
-        asyncio.run(run())
-    assert records(reporter)==[]
 
 
 

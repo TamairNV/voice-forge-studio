@@ -27,7 +27,7 @@ and Windows SmartScreen shows a warning.
 
 Signed: the Windows installers (`VoiceStudio-<version>-win-x64.exe` and
 `VoiceStudio-<version>-win-arm64.exe`) produced by the release workflow
-[`electron-release.yml`](../.github/workflows/electron-release.yml) from a tagged
+`electron-release.yml` from a tagged
 commit of this repository. Only artifacts built by that workflow from the
 repository source are submitted; nothing is signed from a developer machine.
 
@@ -86,7 +86,7 @@ program makes, all started or consented to by the user, are listed in the
 Apart from the update check above, the program does not transfer information to
 networked systems unless the user or the installer requests it. Third-party components keep their own
 privacy policies (for example Hugging Face and GitHub when you download from
-them). More detail: [Electron privacy](electron-privacy.md).
+them). More detail: Electron privacy.
 
 ## Reporting a problem with a signed file
 
@@ -130,7 +130,7 @@ signs nothing and behaves as before (`allow_unsigned` rules unchanged).
    - Leave `ELECTRON_WINDOWS_CSC_LINK` unset: an own certificate takes
      precedence and disables the SignPath path.
    - Optional: a second policy with the slug `test-signing` (test certificate)
-     lets a [release rehearsal](RELEASING.md#rehearse-a-release) dispatched with
+     lets a release rehearsal dispatched with
      `signpath_policy=test-signing` exercise this path from a branch. Rehearsals
      never submit to the release policy.
 4. Test run: dispatch **Electron desktop release** with `release_tag` set to an

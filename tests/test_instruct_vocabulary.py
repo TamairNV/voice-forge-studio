@@ -10,7 +10,7 @@ os.environ.setdefault("OMNIVOICE_DISABLE_FILE_LOG", "1")
 def _catalogue():
     from services import tts_backend
 
-    return {e["id"]: e for e in tts_backend.list_backends()}
+    return {e["id"]: e for e in tts_backend.list_backends(include_hidden=True)}
 
 
 def test_catalogue_reports_vocabulary_per_engine():
@@ -23,7 +23,7 @@ def test_catalogue_reports_vocabulary_per_engine():
 @pytest.mark.usefixtures("cpu_host")
 def test_every_omnivoice_entry_is_tags():
     entries = [e for bid, e in _catalogue().items() if bid.startswith("omnivoice")]
-    assert len(entries) >= 3
+    assert len(entries) == 1
     assert {e["instruct_vocabulary"] for e in entries} == {"tags"}
 
 

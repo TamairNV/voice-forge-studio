@@ -731,50 +731,6 @@ def test_generate_toggle_off_sends_raw_text(client, monkeypatch, fake_engine):
     assert fake_engine.calls[-1][0] == "Dr. Smith has 2 cats"
 
 
-# ── Longform: chapter render normalizes spans (and keys the cache on it) ────
-
-def _render_chapter(tmp_path, text, language, monkeypatch, env=None):
-    if env is None:
-        monkeypatch.delenv(text_normalization.ENV_VAR, raising=False)
-    else:
-        monkeypatch.setenv(text_normalization.ENV_VAR, env)
-    from api.routers.audiobook import _render_chapter_cached
-    from services.audiobook import Chapter, Span
-
-    seen = []
-
-    def synth(t, voice_id, speed=None):
-        seen.append(t)
-        return torch.zeros(1, 2400)
-
-    chapter = Chapter(title="One", spans=[Span(voice_id=None, text=text)])
-    wav_path, dur, was_cached, _seg_stats = _render_chapter_cached(
-        chapter, synth, 24000, "stub-engine",
-        lambda vid: {"ref_audio": None, "ref_text": None, "instruct": None, "seed": None},
-        str(tmp_path), None, language,
-    )
-    return seen, wav_path, was_cached
-
-
-def test_longform_chapter_normalizes_spans(tmp_path, monkeypatch):
-    seen, _, was_cached = _render_chapter(
-        tmp_path, "Dr. Smith has 2 cats", "English", monkeypatch)
-    assert not was_cached
-    assert seen == ["Doctor Smith has two cats"]
-
-
-def test_longform_cache_key_tracks_normalization_toggle(tmp_path, monkeypatch):
-    # Normalization ON and OFF must not share a cached WAV: the key is built
-    # over the normalized span text, so toggling re-renders.
-    _, path_on, _ = _render_chapter(
-        tmp_path, "Dr. Smith has 2 cats", "English", monkeypatch)
-    seen_off, path_off, was_cached_off = _render_chapter(
-        tmp_path, "Dr. Smith has 2 cats", "English", monkeypatch, env="0")
-    assert path_on != path_off
-    assert not was_cached_off
-    assert seen_off == ["Dr. Smith has 2 cats"]  # raw text with the toggle off
-
-
 @pytest.mark.parametrize("raw,expected", [
     ("-20~-10°C", "-20에서 -10°C"),
     ("0.5~1.0초", "0.5에서 1.0초"),

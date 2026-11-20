@@ -51,58 +51,6 @@ def test_failure_code_follows_the_exception_chain():
         assert transcription_failure_code(exc) == code, repr(exc)
 
 
-@pytest.mark.parametrize("index", range(6))
-def test_chunk_failure_class_reaches_the_user(tmp_path, monkeypatch, index):
-    import asyncio
-
-    from api.routers import dub_core as dc
-    from core.public_errors import stream_failure
-
-    exc, code = _cases()[index]
-    job_id = f"t_chunk_class_{index}"
-    audio = tmp_path / "a.wav"
-    with wave.open(str(audio), "wb") as wf:
-        wf.setnchannels(1)
-        wf.setsampwidth(2)
-        wf.setframerate(16000)
-        wf.writeframes(struct.pack("<16000h", *([0] * 16000)))
-    dc._dub_jobs[job_id] = {
-        "audio_path": str(audio), "vocals_path": None, "scene_cuts": [],
-    }
-
-    class _ASR:
-        id = "fake"
-
-        def ensure_loaded(self):
-            pass
-
-        def transcribe(self, path, *, word_timestamps=True):
-            raise exc
-
-        def unload(self):
-            pass
-
-    monkeypatch.setattr(dc, "_CHUNK_TRANSCRIBE_ATTEMPTS", 1)
-    monkeypatch.setattr(dc, "offload_tts_for_asr", lambda *a, **k: None)
-    monkeypatch.setattr(
-        "services.asr_backend.get_active_asr_backend", lambda *a, **k: _ASR()
-    )
-
-    async def _collect():
-        resp = await dc.dub_transcribe_stream(job_id)
-        parts = []
-        async for chunk in resp.body_iterator:
-            parts.append(chunk.decode() if isinstance(chunk, (bytes, bytearray)) else str(chunk))
-        return "".join(parts)
-
-    try:
-        body = asyncio.run(_collect())
-    finally:
-        dc._dub_jobs.pop(job_id, None)
-
-    assert f'"code": "{code}"' in body, body
-    assert stream_failure(code)["detail"] in body
-    assert "chunk-secret" not in body and "/home/alice" not in body
 
 
 def test_imageio_style_binary_is_reachable_by_bare_name(tmp_path, monkeypatch):

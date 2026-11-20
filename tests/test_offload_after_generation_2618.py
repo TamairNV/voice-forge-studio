@@ -203,24 +203,13 @@ def test_idle_callback_skips_while_a_generation_job_is_active(mm, host, enabled,
     assert len(submitted) == 1
 
 
-def test_generation_jobs_active_reads_job_store_and_batch(monkeypatch):
-    import sys
-
+def test_generation_jobs_active_reads_job_store(monkeypatch):
     import services.model_manager as _mm
     from core import job_store
 
-    monkeypatch.setattr(job_store, "list_jobs", lambda **k: [{"id": "dub-1"}])
+    monkeypatch.setattr(job_store, "list_jobs", lambda **k: [{"id": "job-1"}])
     assert _mm._generation_jobs_active() is True
     monkeypatch.setattr(job_store, "list_jobs", lambda **k: [])
-
-    class _Batch:
-        @staticmethod
-        def list_batch_jobs(status=None, limit=50):
-            return [{"id": "b"}] if status == "active" else []
-
-    monkeypatch.setitem(sys.modules, "api.routers.batch", _Batch)
-    assert _mm._generation_jobs_active() is True
-    monkeypatch.setitem(sys.modules, "api.routers.batch", None)
     assert _mm._generation_jobs_active() is False
 
 

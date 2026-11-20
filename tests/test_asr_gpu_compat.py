@@ -20,18 +20,13 @@ _EXPECTED = {
     "whisperx": ("cuda", "cpu"),
     "faster-whisper": ("cuda", "cpu"),
     "mlx-whisper": ("mps", "cpu"),
-    # PyTorch engines: a ROCm (HIP) torch answers torch.cuda with the AMD GPU.
-    "pytorch-whisper": ("cuda", "rocm", "mps", "cpu"),
     "nemo-parakeet": ("cuda", "cpu") if os.name == "nt" else ("cuda", "rocm", "cpu"),
     # MLX runs on Apple Silicon's unified-memory GPU only; is_available
     # hard-gates on mlx_supported(), so claiming cpu would be false.
     "parakeet-mlx": ("mps",),
-    "moonshine": ("cpu",),
-    "funasr": ("cuda", "cpu") if os.name == "nt" else ("cuda", "rocm", "cpu"),
     # Crash-isolated sidecar wraps the same CTranslate2 engine as
     # faster-whisper — same device support (#730 residual B).
     "faster-whisper-isolated": ("cuda", "cpu"),
-    "whisper-cpp": ("vulkan", "cuda", "mps", "cpu"),
 }
 
 # Engines that legitimately have NO cpu path (hard platform/GPU gate in
@@ -72,7 +67,7 @@ def test_compat_values_are_valid(engine_id):
 # (HIP) build. CTranslate2 engines stay unclaimed statically: stock CT2 is
 # NVIDIA-only (#1529) and ROCm is admitted at runtime only for the verified
 # Windows HIP binary (runtime_gpu_compat).
-_ROCM_TORCH_ENGINES = {"pytorch-whisper"} | (set() if os.name == "nt" else {"nemo-parakeet", "funasr"})
+_ROCM_TORCH_ENGINES = set() if os.name == "nt" else {"nemo-parakeet"}
 
 
 def test_only_torch_asr_engines_claim_rocm_statically():

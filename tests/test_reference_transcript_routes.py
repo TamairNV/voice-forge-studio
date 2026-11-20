@@ -89,15 +89,6 @@ def test_a_streamed_legacy_voice_is_transcribed_for_csm(voices, csm):
     assert be._model.calls[-1]["ref_text"] == "what the clip says"
 
 
-def test_an_audiobook_legacy_voice_is_transcribed_for_csm(voices, csm):
-    audiobook = importlib.import_module("api.routers.audiobook")
-    be, heard = csm
-    v = audiobook._resolve_voice("p1")
-    assert v["ref_text"] is None
-    be.generate("hi", ref_audio=v["ref_audio"], ref_text=v["ref_text"])
-    assert be._model.calls[-1]["ref_text"] == "what the clip says"
-
-
 def test_a_stored_transcript_is_used_as_is(csm):
     be, heard = csm
     be.generate("hi", ref_audio="/clip.wav", ref_text="typed words")

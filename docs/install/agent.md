@@ -1,7 +1,7 @@
 # Install with a coding agent
 
 Instructions for a coding agent (Claude Code, Codex, Cursor, …) asked to install
-VoiceStudio. The short prompt in the [README](../../README.md#get-started)
+VoiceStudio. The short prompt in the [README](../../README.md)
 points here. Complete the setup, not just a plan.
 
 ## Rules
@@ -17,7 +17,7 @@ points here. Complete the setup, not just a plan.
 1. **Load context.** Read the install guide for this OS ([macOS](macos.md) ·
    [Windows](windows.md) · [Linux](linux.md); [Docker](docker.md) is a headless backend, not the desktop app),
    [performance](../performance.md) and
-   [`skills/voicestudio/SKILL.md`](../../skills/voicestudio/SKILL.md). If your agent
+   `skills/voicestudio/SKILL.md`. If your agent
    supports skills, install it with `npx skills add debpalash/VoiceStudio`.
 2. **Inspect the device.** OS, CPU architecture, GPU, RAM/VRAM, free disk, and any
    existing VoiceStudio install, backend or downloaded models.
@@ -25,12 +25,12 @@ points here. Complete the setup, not just a plan.
    - Default: the latest stable release asset named `VoiceStudio-<version>-*` for this
      OS and architecture (`VoiceStudio-Electron-*` up to v0.5.7-beta.3) (macOS `.dmg`, Windows `.exe`, Linux `.AppImage` or `.deb`),
      or the [install script](script.md).
-   - From source: follow [`electron/README.md`](../../electron/README.md) —
+   - From source: follow `electron/README.md` —
      run `bun run dev` from the repository root. It installs the JavaScript and,
      for a supported local backend, Python dependencies before launch. Let
      Electron supervise the backend; do not start a second one.
    - Migrating from Tauri: back up first and follow the
-     [migration guide](../electron-migration.md).
+     migration guide.
 4. **Configure.** Pick a supported voice-cloning engine and acceleration that fit this
    device. Keep working defaults and install required dependencies.
 5. **Verify.** Start the app and check `/health` at the backend address (default

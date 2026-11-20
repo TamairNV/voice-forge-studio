@@ -131,7 +131,7 @@ def test_output_rate_metadata_never_loads_a_model(monkeypatch):
     monkeypatch.setattr(tts, "_active_instance", None)
     assert tts.output_sample_rate("voxcpm2") == 48000
     assert tts.output_sample_rate("omnivoice") == 24000
-    assert tts.output_sample_rate("kittentts") == 24000
+    assert tts.output_sample_rate("pockettts") == 24000
     monkeypatch.setattr(tts, "get_backend_class", lambda _: pytest.fail("Must use live metadata"))
     monkeypatch.setattr(tts, "_active_instance", SimpleNamespace(sample_rate=44100))
     monkeypatch.setattr(tts, "_active_instance_id", "custom")

@@ -280,34 +280,6 @@ def test_ffmpeg_with_the_wrapper_never_fetches_playlist_urls(recorder, tmp_path)
     assert hits == []
 
 
-@pytest.mark.parametrize("route", ["/dub/upload", "/preview/upload"])
-def test_dub_upload_of_a_playlist_is_refused_and_never_fetched(route, recorder, monkeypatch):
-    from fastapi.testclient import TestClient
-
-    from main import app
-    from services import dub_pipeline
-
-    base, hits = recorder
-    queued = []
-
-    async def fake_add_task(*args, **kwargs):
-        queued.append(args)
-
-    monkeypatch.setattr("core.tasks.task_manager.add_task", fake_add_task)
-    monkeypatch.setattr(dub_pipeline, "find_ffmpeg", lambda: shutil.which("ffmpeg") or "ffmpeg")
-
-    with TestClient(app) as client:
-        response = client.post(
-            route,
-            files={"video": ("clip.mp4", _playlist(base), "video/mp4")},
-            headers={"Host": "127.0.0.1"},
-        )
-    assert response.status_code == 422, response.text
-    assert response.json()["detail"]["code"] == "invalid_media_file"
-    assert queued == []
-    assert hits == []
-
-
 def test_pipeline_refuses_a_manifest_source(tmp_path):
     from core.failure import InvalidMediaFileError
 

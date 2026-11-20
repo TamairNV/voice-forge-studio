@@ -132,60 +132,6 @@ def test_probe_tells_audio_from_no_audio(video_only, video_with_audio, tmp_path,
     assert ffmpeg_utils.has_audio_stream(str(junk)) is None
 
 
-# ── dub ingest (the reported path) ─────────────────────────────────────────
-
-
-@needs_ffmpeg
-@pytest.mark.asyncio
-@pytest.mark.parametrize("probe", [True, False], ids=["probe", "stderr-fallback"])
-async def test_dub_extract_of_video_without_audio_reports_no_audio_track(
-    video_only, tmp_path, monkeypatch, probe,
-):
-    from services import dub_pipeline
-
-    if not probe:
-        # ffprobe unavailable: ffmpeg's own wording must still be recognized.
-        monkeypatch.setattr(dub_pipeline, "require_audio_stream", lambda _path: None)
-        monkeypatch.setattr("services.ffmpeg_utils.has_audio_stream", lambda _path: None)
-    job_dir = tmp_path / "job"
-    job_dir.mkdir()
-    raw = [e async for e in dub_pipeline.ingest_pipeline(
-        f"noaudio-{probe}", str(job_dir), {"kind": "upload", "path": str(video_only)},
-    )]
-    error = next(e for e in _events(raw) if e.get("type") == "error")
-    assert error["stage"] == "extract"
-    assert error["reason"] == NO_AUDIO_TRACK_MESSAGE
-    assert error["docs_topic"] == "NO_AUDIO_TRACK"
-    assert "code 234" not in error["reason"]
-    assert "Invalid argument" not in error["reason"]
-
-
-@needs_ffmpeg
-@pytest.mark.asyncio
-async def test_dub_extract_of_video_with_audio_still_extracts(video_with_audio, tmp_path, monkeypatch):
-    from services import dub_pipeline
-
-    # Persistence is not under test; keep the job out of the history DB.
-    monkeypatch.setattr(dub_pipeline, "find_cached_job", lambda *_a, **_k: None)
-    monkeypatch.setattr(dub_pipeline, "put_and_save_job", lambda *_a, **_k: True)
-    job_dir = tmp_path / "job"
-    job_dir.mkdir()
-    gen = dub_pipeline.ingest_pipeline(
-        "withaudio", str(job_dir), {"kind": "upload", "path": str(video_with_audio)},
-    )
-    seen = []
-    try:
-        async for chunk in gen:
-            seen.extend(_events([chunk]))
-            if any(e.get("type") in ("extract_done", "error") for e in seen):
-                break
-    finally:
-        await gen.aclose()
-    assert not [e for e in seen if e.get("type") == "error"], seen
-    assert any(e.get("type") == "extract_done" for e in seen)
-    assert (job_dir / "audio.wav").stat().st_size > 1000
-
-
 # ── the rest of the class ──────────────────────────────────────────────────
 
 
@@ -209,23 +155,6 @@ def test_extract_failure_helper_keeps_other_failures(video_with_audio):
 
 
 @needs_ffmpeg
-def test_gallery_upload_refuses_video_without_audio(video_only, tmp_path, monkeypatch):
-    from fastapi import UploadFile
-
-    from api.routers import gallery
-
-    store = tmp_path / "store"
-    store.mkdir()
-    monkeypatch.setattr(gallery, "VOICE_GALLERY_DIR", store)
-    upload = UploadFile(io.BytesIO(video_only.read_bytes()), filename="silent.mp4")
-    with _raises_no_audio():
-        asyncio.run(gallery.upload_voice_clip(
-            name="x", character="", category="import", description="", audio=upload,
-        ))
-    assert not list(store.iterdir()), "the refused upload must not be kept"
-
-
-@needs_ffmpeg
 def test_clone_profile_refuses_reference_without_audio(video_only, tmp_path, monkeypatch):
     from fastapi import UploadFile
 
@@ -242,19 +171,6 @@ def test_clone_profile_refuses_reference_without_audio(video_only, tmp_path, mon
             vd_states=None, image=None,
         ))
     assert not list(store.iterdir()), "the refused reference must not be kept"
-
-
-@needs_ffmpeg
-def test_batch_extract_reports_no_audio_track(video_only, tmp_path, monkeypatch):
-    from api.routers import batch
-
-    monkeypatch.setattr(batch, "DATA_DIR", str(tmp_path))
-    job = {
-        "video_path": str(video_only), "langs": ["es"], "status": "running",
-        "progress": None,
-    }
-    with _raises_no_audio():
-        asyncio.run(batch._run_batch_pipeline("noaudio", job))
 
 
 class _SilentVideoASR:

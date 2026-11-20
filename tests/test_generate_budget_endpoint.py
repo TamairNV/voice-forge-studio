@@ -1,19 +1,5 @@
-"""GET /generate/budget reports the active budgets the UI backstop must outlast."""
+"""GET /generate/budget reports the active budgets."""
 from __future__ import annotations
-
-import re
-from pathlib import Path
-
-ROOT = Path(__file__).resolve().parents[1]
-BUDGET_TS = ROOT / "electron/src/shared/utils/generateBudget.ts"
-
-
-def test_reported_keys_are_ones_the_client_reads():
-    from services import model_manager
-
-    reported = set(model_manager.generate_budget_s())
-    client = re.search(r"Record<\s*([^,]+),\s*unknown", BUDGET_TS.read_text(encoding="utf-8")).group(1)
-    assert reported == set(re.findall(r"'(\w+)'", client))
 
 
 def test_operator_overrides_are_reported(monkeypatch):

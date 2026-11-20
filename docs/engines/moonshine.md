@@ -27,7 +27,7 @@ Auto-detect never picks it; it's an explicit opt-in.
 - **Dubbing.** Output is plain text as a **single segment spanning the whole
   file — no word or segment timestamps** — so there's nothing for lip-sync
   or subtitle timing to work with. Use a Whisper-family engine or
-  [sherpa-onnx-asr](sherpa-onnx-asr.md) for those jobs.
+  sherpa-onnx-asr for those jobs.
 - Multilingual work: results report English; for broad language coverage use
   [whisperx](whisperx.md) or [funasr](funasr.md).
 

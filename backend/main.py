@@ -1,4 +1,3 @@
-import importlib
 import os
 import sys
 
@@ -155,10 +154,6 @@ if sys.platform == "win32":
 from services.hf_auth import apply_process_token_policy as _apply_hf_token_policy  # noqa: E402
 
 _apply_hf_token_policy()
-
-# Importing it removes Electron's account-bridge capability from os.environ, so
-# engine and tool subprocesses never inherit it.
-importlib.import_module("services.cloud_account")
 
 # ── cuDNN 8 library preload ─────────────────────────────────────────────
 # Moved into _phase_a_build (`native_preload` step, early-bind refactor): the
@@ -662,13 +657,6 @@ def _phase_a_build_inner() -> None:
     # MIOPEN_FIND_MODE (shell, `.env`, Docker) still wins; `setdefault` is
     # load-bearing, never an assignment.
     os.environ.setdefault("MIOPEN_FIND_MODE", "FAST")
-    # yt-dlp user-update overlay: must run before anything imports yt_dlp so
-    # a user-updated version wins over the locked wheel. Best-effort.
-    try:
-        from services.media_tools import activate_ytdlp_overlay
-        activate_ytdlp_overlay()
-    except Exception:
-        pass
     # #1256: publish resolved ffmpeg/ffprobe dirs on PATH for dependencies
     # that shell out by bare name — after prefs restored any FFMPEG_PATH
     # override, before any engine loads.
@@ -790,55 +778,37 @@ def _phase_a_build_inner() -> None:
         profiles,
         profile_images,
         exports,
+        jobs,
         generation,
-        dub_core,
-        dub_generate,
-        dub_export,
-        dub_translate,
         projects,
-        glossary,
         engines,
         tools,
-        stories,
         setup,
-        gallery,
         archetypes,
         describe_voice,
-        community,
-        batch,
         watermark,
         events,
         capture,
-        capture_ws,
-        speech_platform,
-        dictation,
         openai_compat,
         tts_stream,
-        marketplace,
         personas,
-        sonitranslate,
-        audiobook,
-        longform_jobs,
         pronunciation,  # Expressive-TTS Spec 01: user pronunciation dictionary
         settings as settings_router,  # Phase 1 AUTH-03: HF token save/clear/state
         media_tools as media_tools_router,  # Audio tools: ffmpeg/ffprobe/yt-dlp
         auth as auth_router,
         voice_convert,  # Studio Convert: speech-to-speech via ASR → TTS
-        sfx,  # Tools > Sound effects (#3577): opt-in MOSS-SoundEffect sidecar
+        voice_forge as voice_forge_router,  # Voice Forge game-dev UI & API
     )
     from api.routers import mcp_bindings as _mcp_bindings_router  # noqa: E402
-    from api.routers import telephony_twilio as _telephony_twilio_router  # noqa: E402
-    from api.routers import calls as _calls_router  # noqa: E402
-    from api.routers import cloud_sync as _cloud_sync_router  # noqa: E402
     _router_modules.extend([
-        system, profiles, profile_images, exports, generation, voice_convert, sfx, dub_core, dub_generate,
-        dub_export, dub_translate, projects, glossary, engines, tools,
-        stories, setup, gallery, archetypes, describe_voice, community,
-        batch, watermark, events, capture, capture_ws, speech_platform, dictation,
-        openai_compat, tts_stream, marketplace, personas, sonitranslate,
-        audiobook, longform_jobs, pronunciation, settings_router,
+        system, profiles, profile_images, exports, jobs, generation, voice_convert,
+        projects, engines, tools,
+        setup, archetypes, describe_voice,
+        watermark, events, capture,
+        openai_compat, tts_stream, personas,
+        pronunciation, settings_router,
         media_tools_router, auth_router, _mcp_bindings_router,
-        _telephony_twilio_router, _calls_router, _cloud_sync_router,
+        voice_forge_router,
     ])
     # Download-acceleration state, once, for triage-from-logs (FDL-03).
     try:
@@ -877,6 +847,10 @@ def _phase_a_finalize() -> None:
             logging.getLogger("omnivoice.api").info(
                 "MCP server not mounted (%s); /mcp disabled.", _mcp_err
             )
+
+    # Voice Forge static assets & audio mounts (before /audio so /audio/{scenes,takes,characters} match first).
+    from api.routers.voice_forge import mount_voice_forge_static
+    mount_voice_forge_static(app)
 
     # User and engine files: never served as a page (core/safe_static.py).
     from core.safe_static import SafeMediaFiles
@@ -1085,9 +1059,6 @@ async def _phase_b(app: FastAPI) -> None:
     # Network sharing is loopback-only by default; seed the (disabled) state
     # so the middleware and /system/network/state always have something to read.
     app.state.network_share = network_share.get_state()
-    from api.routers.gallery import _init_gallery_db
-
-    _init_gallery_db()
     # Seed a demo voice profile on first run (empty DB only).
     from core.onboarding import seed_sample_project
     seed_sample_project()
@@ -1257,61 +1228,8 @@ async def _phase_b(app: FastAPI) -> None:
     app.state.mcp_task = mcp_task
     app.state.mcp_stop = mcp_stop
 
-    # VoiceStudio Cloud settings sync: idles (no Cloud call) unless main hands
-    # out a token, i.e. the user is signed in with sync switched on.
-    from services.cloud_sync.service import get_service as _cloud_sync
-
-    async def _start_cloud_sync() -> None:
-        try:
-            await _cloud_sync().start()
-        except Exception:  # noqa: BLE001 — optional feature: never blocks start-up
-            logger.exception("cloud sync did not start")
-
-    app.state.cloud_sync_task = asyncio.create_task(_start_cloud_sync())
     if mcp_mounted:
         logger.info("MCP server mounted at /mcp")
-    # Phone calls (opt-in): the separate loopback telephony listener resumes
-    # only when the user left the Twilio integration enabled.
-    try:
-        from api.routers.telephony_twilio import start_gateway_if_enabled
-        await start_gateway_if_enabled()
-    except Exception:
-        logger.exception("Telephony gateway startup failed (continuing without it)")
-
-
-def _start_analytics_lifecycle(app: FastAPI, crash_record) -> None:
-    """Own optional analytics work without putting its disk I/O on readiness."""
-    from core import analytics
-
-    revision = analytics.startup_consent_revision()
-    app.state.analytics_worker = None
-
-    async def run():
-        try:
-            worker = asyncio.get_running_loop().run_in_executor(
-                None, lambda: analytics.record_startup_lifecycle(
-                    crash_record, consent_revision=revision,
-                ),
-            )
-            app.state.analytics_worker = worker
-            await asyncio.shield(worker)
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            logger.exception("Analytics startup lifecycle failed (non-fatal).")
-
-    app.state.analytics_task = asyncio.create_task(run())
-
-
-async def _wait_for_analytics_thread(app: FastAPI) -> None:
-    """Cancel unsubmitted work and retain the running worker until teardown."""
-    task = getattr(app.state, "analytics_task", None)
-    if task is not None and not task.done():
-        task.cancel()
-        await asyncio.gather(task, return_exceptions=True)
-    worker = getattr(app.state, "analytics_worker", None)
-    if worker is not None and not worker.done():
-        await asyncio.wait({worker}, timeout=20.0)
 
 
 async def _finalize_diagnostics(callback, timeout=2.5):
@@ -1418,15 +1336,6 @@ async def _application_lifespan(app: FastAPI):
         run_sentinel.write_sentinel()
     except Exception:
         logger.exception("Run-sentinel startup failed (non-fatal).")
-    # Opt-in lifecycle analytics (core/analytics.py): install/update/crash
-    # events. A no-op without the user's explicit consent AND a build token.
-    # The run-sentinel record above is the ONE authoritative crash source —
-    # the desktop shell's markers cover the same deaths, so the frontend
-    # never emits a crash event (no double-count).
-    try:
-        _start_analytics_lifecycle(app, _crash_record)
-    except Exception:
-        logger.exception("Analytics startup lifecycle failed (non-fatal).")
 
     if _EAGER:
         # Pytest / opt-in embedders: today's exact behavior — everything done
@@ -1493,12 +1402,6 @@ async def _application_lifespan(app: FastAPI):
     if _phase_a_started.is_set() and not _phase_a_finished.is_set():
         await asyncio.to_thread(_phase_a_finished.wait, 20.0)
     await _wait_for_profile_reconcile_thread(app)
-    await _wait_for_analytics_thread(app)
-    try:
-        from services.telephony import gateway as telephony_gateway
-        await telephony_gateway.stop()
-    except Exception:
-        logger.exception("Telephony gateway shutdown failed")
     logger.info("Shutdown: cleaning up…")
     # Flip model_manager into shutdown mode, so a model load in flight (or
     # still queued) on a GPU-pool thread classifies executor rejections as a
@@ -1508,13 +1411,6 @@ async def _application_lifespan(app: FastAPI):
         model_loads_begin_shutdown()
     # Stop MCP first — signal its task to exit its own anyio context (correct
     # task-affinity), then bound the wait so a wedged manager can't hang exit.
-    if getattr(app.state, "cloud_sync_task", None) is not None:
-        from services.cloud_sync.service import get_service as _cloud_sync
-
-        try:
-            await asyncio.wait_for(_cloud_sync().stop(), timeout=5.0)
-        except Exception:  # noqa: BLE001
-            pass
     mcp_stop = getattr(app.state, "mcp_stop", None)
     mcp_task = getattr(app.state, "mcp_task", None)
     if mcp_stop is not None:

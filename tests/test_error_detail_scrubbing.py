@@ -58,10 +58,7 @@ _PATH_SHAPED = re.compile(
 DESIGNED_ATTRIBUTES = {"detail", "type"}
 # (file, line) of justified exceptions, with the reason on the same row. Paths are
 # relative to the routers package, so a subpackage entry reads `setup/foo.py`.
-ALLOWLIST: dict[tuple[str, int], str] = {
-    ("marketplace.py", 465): "user-supplied bundle name, already validated by _contained_path",
-    ("marketplace.py", 505): "user-supplied bundle name, already validated by _contained_path",
-}
+ALLOWLIST: dict[tuple[str, int], str] = {}
 
 
 def _walk(nodes):

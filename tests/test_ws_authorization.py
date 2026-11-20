@@ -28,13 +28,9 @@ pytestmark = pytest.mark.usefixtures("asr_model_installed")
 
 API_KEY = "s3cret-key"
 
-# /v1/audio/transcriptions/stream is the OpenAI-compatible alias of
-# /ws/transcribe: the same handler, so the same guard must cover both routes.
 WS_ROUTES = (
     "/ws/tts",
     "/ws/events",
-    "/ws/transcribe",
-    "/v1/audio/transcriptions/stream",
 )
 
 LOOPBACK = ("127.0.0.1", 50000)
@@ -58,13 +54,13 @@ def _isolated_auth_env(monkeypatch):
 
 @pytest.fixture(scope="module")
 def bare_app():
-    """Only the three WebSocket routers, with no middleware in front."""
+    """Only the kept WebSocket routers, with no middleware in front."""
     from fastapi import FastAPI
 
-    from api.routers import capture_ws, events, tts_stream
+    from api.routers import events, tts_stream
 
     app = FastAPI()
-    for module in (capture_ws, events, tts_stream):
+    for module in (events, tts_stream):
         app.include_router(module.router)
     return app
 
@@ -164,7 +160,7 @@ def middleware_app(bare_app):
     return app
 
 
-@pytest.mark.parametrize("path", ["/ws/tts", "/ws/events", "/ws/transcribe"])
+@pytest.mark.parametrize("path", ["/ws/tts", "/ws/events"])
 def test_ticket_survives_middleware_and_inline_guard_but_cannot_replay(
     middleware_app, monkeypatch, path,
 ):
@@ -183,7 +179,7 @@ def test_ticket_survives_middleware_and_inline_guard_but_cannot_replay(
     )
 
 
-@pytest.mark.parametrize("path", ["/ws/tts", "/ws/events", "/ws/transcribe"])
+@pytest.mark.parametrize("path", ["/ws/tts", "/ws/events"])
 @pytest.mark.parametrize("origin", [None, "http://evil.test", "http://testserver"])
 def test_session_cookie_keeps_its_origin_boundary_through_both_guards(
     middleware_app, monkeypatch, path, origin,

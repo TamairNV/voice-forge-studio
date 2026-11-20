@@ -22,7 +22,9 @@ import functools
 import inspect
 import logging
 import os
+import platform
 import re
+import sys
 import contextlib
 import threading
 import uuid
@@ -2430,323 +2432,8 @@ def _moss_candidate_exports(module):
     ]
 
 
-class MossTTSNanoBackend(TTSBackend):
-    """OpenMOSS MOSS-TTS-Nano-100M — the low-resource / broad-language pick.
-
-    100M-param autoregressive codec-LM. Runs realtime on a 4-core CPU (no GPU
-    required), native 48 kHz stereo output, 20 languages, Apache-2.0. Fills
-    two gaps in the existing lineup: the "runs on a fanless laptop" tier and
-    the Arabic/Hebrew/Persian/Korean/Turkish coverage that OmniVoice's
-    zero-shot does but VoxCPM2 + XTTS lean against.
-
-    Ships as a scaffold — `is_available()` reports the missing install so the
-    Settings picker gates the engine cleanly until the user opts in.
-    """
-
-    id = "moss-tts-nano"
-    display_name = "MOSS-TTS-Nano (20 langs, CPU realtime, 48 kHz)"
-    supports_voice_design = False  # strictly reference-cloning
-    # generate() forwards text + prompt_audio_path only (#3654).
-    supports_num_step = False
-    supports_guidance_scale = False
-    gpu_compat = ("cuda", "rocm", "cpu")
-
-    def __init__(self):
-        self._model = None
-        self._tokenizer = None
-
-    @classmethod
-    def is_available(cls) -> tuple[bool, str]:
-        # Package isn't on PyPI — users install from the MOSS repo
-        # (`pip install -e` of github.com/OpenMOSS/MOSS-TTS-Nano) or we load
-        # the HF weights with `trust_remote_code=True`.
-        try:
-            import transformers  # noqa: F401
-        except ImportError:
-            return False, "transformers not installed"
-        try:
-            # MOSS ships its own package alongside the HF weights.
-            import moss_tts_nano  # noqa: F401
-        except ImportError:
-            return False, (
-                "moss_tts_nano package not installed. Install from "
-                "https://github.com/OpenMOSS/MOSS-TTS-Nano "
-                "(`pip install -e .`), then set OMNIVOICE_TTS_BACKEND=moss-tts-nano."
-            )
-        # Importing the MODULE is not enough (#1287). The user had the package
-        # installed, so this reported "ready", they switched engine, and the
-        # first generate died with `cannot import name 'MossTTSNano'` — the
-        # upstream repo is unpinned and moves. An availability check that does
-        # not verify the API it will actually call is a check that lies.
-        if _moss_model_class(moss_tts_nano) is None:
-            exported = ", ".join(_moss_candidate_exports(moss_tts_nano)) or "no model class"
-            return False, (
-                "moss_tts_nano is installed but does not expose a usable model "
-                f"class (found: {exported}). MOSS-TTS-Nano is unpinned upstream and "
-                "its entry point has changed before — pull the latest "
-                "github.com/OpenMOSS/MOSS-TTS-Nano and re-run `pip install -e .`, "
-                "or open an issue with the version you have so the name can be added."
-            )
-        return True, "ready"
-
-    _DEFAULT_SAMPLE_RATE = 48000
-
-    @property
-    def sample_rate(self) -> int:
-        return self._DEFAULT_SAMPLE_RATE  # native stereo 48 kHz
-
-    @property
-    def supported_languages(self) -> list[str]:
-        return [
-            "zh", "en", "de", "es", "fr", "ja", "it", "he", "ko", "ru",
-            "fa", "ar", "pl", "pt", "cs", "da", "sv", "hu", "el", "tr",
-        ]
-
-    def _ensure_loaded(self):
-        if self._model is not None:
-            return
-        ok, msg = self.is_available()
-        if not ok:
-            raise RuntimeError(f"MOSS-TTS-Nano unavailable: {msg}")
-        import moss_tts_nano  # type: ignore[import-not-found]
-
-        model_cls = _moss_model_class(moss_tts_nano)
-        if model_cls is None:  # pragma: no cover - is_available() gates this
-            raise RuntimeError(
-                "moss_tts_nano exposes no usable model class; see Model Catalogue"
-            )
-        checkpoint = os.environ.get(
-            "OMNIVOICE_MOSS_TTS_MODEL", "OpenMOSS-Team/MOSS-TTS-Nano"
-        )
-        logger.info("Loading MOSS-TTS-Nano from %s", checkpoint)
-        self._model = _retry_once_with_fresh_hf_client(
-            lambda: model_cls.from_pretrained(checkpoint, trust_remote_code=True),
-            "MOSS-TTS-Nano",
-        )
-
-    def generate(self, text, **kw) -> torch.Tensor:
-        self._check_language(kw.get("language"))
-        self._ensure_loaded()
-        import numpy as np
-        ref_audio = kw.get("ref_audio")
-        # MOSS is strictly reference-cloning: no instruct / speaker_id / speed.
-        # We downgrade gracefully — extras are silently ignored so the common
-        # call-site doesn't need to know which engine it's talking to.
-        wav = self._model.generate(
-            text=text,
-            prompt_audio_path=ref_audio,
-        )
-        if isinstance(wav, np.ndarray):
-            wav = torch.from_numpy(wav).float()
-        if wav.ndim == 1:
-            wav = wav.unsqueeze(0)
-        elif wav.ndim == 2 and wav.shape[0] > 1:
-            # Model emits stereo; downmix to mono for the dub mixer (which
-            # treats TTS output as mono per segment). Cheap mean-channel mix.
-            wav = wav.mean(dim=0, keepdim=True)
-        return wav
 
 
-# ── KittenTTS (lightweight English "Turbo" tier) ────────────────────────────
-
-
-class KittenTTSBackend(TTSBackend):
-    """KittenML/KittenTTS — 25-80 MB ONNX model, 8 preset voices, English only.
-
-    Fills the ElevenLabs-Flash niche: when the caller just needs quick English
-    narration (voiceover, demo reads, short phrases) with no reference sample.
-    Runs CPU-realtime on any platform — no torch, no CUDA, no mlx. The
-    trade-off vs OmniVoice is obvious:
-      - No voice cloning (fixed preset voices)
-      - English only
-      - Much faster + much smaller install
-
-    Preset voice is chosen via `extras["voice"]` (defaults to DEFAULT_VOICE,
-    "expr-voice-2-f"). Any
-    `ref_audio` / `instruct` / `language` arg is ignored with a log line so
-    the common call-site doesn't need to know which engine it's talking to.
-    """
-
-    id = "kittentts"
-    display_name = "KittenTTS (English, 8 preset voices, CPU realtime)"
-    # KittenTTS ships as an ONNX CPU graph; no CUDA/MPS path today.
-    gpu_compat = ("cpu",)
-    supports_cloning = False  # fixed preset voices only; ref_audio is ignored
-    # instruct is ignored too, so a Voice Design take would always be the same
-    # preset voice whatever the details or seed (#3413).
-    supports_voice_design = False
-    # The ONNX graph takes voice/speed only — quality knobs have nowhere to
-    # go, so explicit values 400 at /v1/audio/speech (#3654).
-    supports_num_step = False
-    supports_guidance_scale = False
-
-    PRESET_VOICES = [
-        "expr-voice-2-m", "expr-voice-2-f",
-        "expr-voice-3-m", "expr-voice-3-f",
-        "expr-voice-4-m", "expr-voice-4-f",
-        "expr-voice-5-m", "expr-voice-5-f",
-    ]
-    DEFAULT_VOICE = "expr-voice-2-f"
-
-    def __init__(self):
-        self._model = None
-
-    @classmethod
-    def is_available(cls) -> tuple[bool, str]:
-        try:
-            import kittentts  # noqa: F401
-            return True, "ready"
-        except ImportError as e:
-            return False, f"kittentts not installed: {e}"
-
-    _DEFAULT_SAMPLE_RATE = 24000
-
-    @property
-    def sample_rate(self) -> int:
-        # KittenTTS emits 24 kHz mono per its ONNX model config.
-        return self._DEFAULT_SAMPLE_RATE
-
-    @property
-    def supported_languages(self) -> list[str]:
-        return ["en"]
-
-    def _ensure_loaded(self):
-        if self._model is not None:
-            return
-        from kittentts import KittenTTS
-        from utils.espeak_data import ensure_espeak_data_path
-        # #3367: espeak-ng exit(1)s the process when it cannot open its data
-        # directory; resolve a path it accepts (or raise) before phonemizer
-        # initializes it inside the constructor below.
-        ensure_espeak_data_path()
-        checkpoint = os.environ.get(
-            "OMNIVOICE_KITTENTTS_MODEL", "KittenML/kitten-tts-mini-0.8"
-        )
-        logger.info("Loading KittenTTS from %s", checkpoint)
-        # #880: the first-use load downloads ~80 MB from the HF Hub inside the
-        # generate path; if the hub's shared httpx client was closed
-        # mid-lifecycle, retry once with a fresh client instead of failing
-        # the whole generation.
-        self._model = _retry_once_with_fresh_hf_client(
-            lambda: KittenTTS(checkpoint), what="KittenTTS"
-        )
-
-    # #1173: the shipped ONNX graph's BERT front-end has a hard 512-token
-    # positional cap (measured against kitten-tts-mini-0.8; exceeding it
-    # aborts inference inside onnxruntime with the opaque
-    # "Expand node … invalid expand shape" InvalidArgument). Upstream's
-    # chunker caps chunks at 400 *text characters*, but token count is the
-    # length of the *phonemized* string — espeak expands digits (and other
-    # verbalized tokens) massively, so 110 chars of digits already
-    # phonemize to ~1150 tokens. We pre-measure every chunk with the
-    # model's own tokenizer and split oversized ones at word boundaries.
-    _MAX_ONNX_TOKENS = 512
-
-    def generate(self, text: str, **kw) -> torch.Tensor:
-        self._check_language(kw.get("language"))
-        import numpy as np
-        self._ensure_loaded()
-
-        voice = kw.get("voice") or self.DEFAULT_VOICE
-        if voice not in self.PRESET_VOICES:
-            logger.info(
-                "KittenTTS: unknown voice %r, falling back to %r. Valid: %s",
-                voice, self.DEFAULT_VOICE, self.PRESET_VOICES,
-            )
-            voice = self.DEFAULT_VOICE
-
-        speed = float(kw.get("speed", 1.0))
-        wav_np = self._synthesize(text, voice, speed)
-        if not isinstance(wav_np, np.ndarray):
-            wav_np = np.asarray(wav_np)
-        wav = torch.from_numpy(wav_np).float()
-        if wav.ndim == 1:
-            wav = wav.unsqueeze(0)
-        elif wav.ndim == 2 and wav.shape[0] > 1:
-            wav = wav.mean(dim=0, keepdim=True)
-        return wav
-
-    # ── #1173 input-shape hardening ────────────────────────────────────────
-    #
-    # KittenTTS.generate() defaults clean_text=False, so the engine's own
-    # number-verbalizing preprocessor never ran through this adapter — and
-    # the openai-compat route typically has no `language`, so the app-level
-    # normalize_for_tts() skips numbers→words there too. Raw digits then
-    # reached espeak, whose verbalization exploded past the ONNX graph's
-    # 512-token cap ("invalid expand shape" 500). Empty / unspeakable input
-    # crashed differently (np.concatenate on zero chunks). Both classes are
-    # handled here, in the adapter, so every route benefits.
-
-    def _synthesize(self, text: str, voice: str, speed: float):
-        """Chunk-and-generate with the engine's own cleanup + a token-budget
-        preflight per chunk. Falls back to the plain upstream call if the
-        kittentts internals this relies on ever change shape."""
-        import numpy as np
-
-        onnx = getattr(self._model, "model", None)
-        if not (
-            onnx is not None
-            and callable(getattr(onnx, "generate_single_chunk", None))
-            and callable(getattr(onnx, "_prepare_inputs", None))
-        ):  # pragma: no cover — future upstream refactor
-            return self._model.generate(text, voice=voice, speed=speed,
-                                        clean_text=True)
-
-        try:
-            from kittentts.onnx_model import chunk_text
-        except ImportError:  # pragma: no cover — future upstream refactor
-            # Same contract as the attribute guard above: if upstream moves
-            # chunk_text, degrade to the plain call instead of a 500.
-            return self._model.generate(text, voice=voice, speed=speed,
-                                        clean_text=True)
-
-        cleaned = text
-        preprocessor = getattr(onnx, "preprocessor", None)
-        if callable(preprocessor):
-            # The engine's own cleaner (numbers→words etc.) — same pass
-            # upstream applies with clean_text=True.
-            cleaned = preprocessor(text)
-
-        chunks: list[str] = []
-        for chunk in chunk_text(cleaned):
-            chunks.extend(self._split_to_token_budget(onnx, chunk, voice, speed))
-        if not chunks:
-            raise TTSInputError(
-                "KittenTTS: the input contains no speakable text (empty or "
-                "punctuation-only after cleanup) — send at least one word."
-            )
-        outs = [onnx.generate_single_chunk(c, voice, speed) for c in chunks]
-        return np.concatenate(outs, axis=-1)
-
-    def _split_to_token_budget(self, onnx, chunk: str, voice: str,
-                               speed: float) -> list[str]:
-        """Split ``chunk`` (at word boundaries, then mid-word as a last
-        resort) until each piece phonemizes to ≤ _MAX_ONNX_TOKENS tokens,
-        measured with the model's own tokenizer. Never raises — an
-        unmeasurable chunk is passed through unchanged."""
-        chunk = chunk.strip()
-        if not chunk:
-            return []
-        try:
-            n_tokens = onnx._prepare_inputs(chunk, voice, speed)[
-                "input_ids"].shape[1]
-        except Exception:  # pragma: no cover — measurement is best-effort
-            return [chunk]
-        if n_tokens <= self._MAX_ONNX_TOKENS:
-            return [chunk]
-        words = chunk.split()
-        if len(words) > 1:
-            mid = len(words) // 2
-            left, right = " ".join(words[:mid]), " ".join(words[mid:])
-        else:
-            # Single monster token (e.g. a 500-digit number pre-cleanup) —
-            # bisect the raw string; degraded prosody beats an ONNX abort.
-            mid = max(1, len(chunk) // 2)
-            left, right = chunk[:mid], chunk[mid:]
-            if not left or not right:  # 1-char chunk that still overflows
-                return [chunk]  # pragma: no cover — impossible in practice
-        return (self._split_to_token_budget(onnx, left, voice, speed)
-                + self._split_to_token_budget(onnx, right, voice, speed))
 
 
 # ── MLX-Audio (mac-ARM engine multiplexer) ──────────────────────────────────
@@ -2864,49 +2551,6 @@ def _harden_mlx_audio_eos_ids() -> None:
     lm_generate._eos_ids = _eos_ids
 
 
-#: NLTK data MeloTTS English's g2p_en front end looks up on every call.
-_MELOTTS_NLTK_RESOURCES = (
-    ("taggers/averaged_perceptron_tagger_eng", "averaged_perceptron_tagger_eng"),
-    ("taggers/averaged_perceptron_tagger.zip", "averaged_perceptron_tagger"),
-    ("corpora/cmudict.zip", "cmudict"),
-)
-
-
-def _ensure_melotts_text_frontend() -> None:
-    """Validate optional text resources locally, before importing g2p_en.
-
-    g2p_en downloads its legacy NLTK tagger and dictionary at import time.
-    Check those plus the modern English tagger first; generation must never
-    acquire resources behind the user's back.
-    """
-    import importlib.util
-    from pathlib import Path
-
-    if importlib.util.find_spec("g2p_en") is None:
-        raise RuntimeError(
-            "MeloTTS English needs the optional 'g2p_en' text package. "
-            "Pick another MLX-Audio model or install it explicitly into "
-            "VoiceStudio's Python environment (uv pip install g2p_en)."
-        )
-    import nltk
-    from core.config import DATA_DIR
-
-    target = Path(DATA_DIR) / "nltk_data"
-    if str(target) not in nltk.data.path:
-        nltk.data.path.insert(0, str(target))
-    for lookup, package in _MELOTTS_NLTK_RESOURCES:
-        try:
-            nltk.data.find(lookup)
-        except LookupError as exc:
-            raise RuntimeError(
-                f"MeloTTS needs the local NLTK '{package}' data. "
-                "Install its resources explicitly in VoiceStudio's Python "
-                "environment: python -m nltk.downloader "
-                "averaged_perceptron_tagger averaged_perceptron_tagger_eng cmudict. "
-                "Generation does not download these resources."
-            ) from exc
-
-
 def _dia_tagged(text: str) -> str:
     """Prefix a single-speaker ``[S1]`` tag unless the text already names speakers."""
     stripped = text.strip()
@@ -2947,119 +2591,21 @@ def _mlx_audio_installed_snapshot(repo_id: str) -> str:
         ) from exc
 
 
-_OUTETTS_CODEC_SAMPLE_RATE = 24000  # mlx-audio's DAC speech codec
-
-
-def _outetts_reference_array(path: str):
-    """Mono float32 ``mx.array`` at the OuteTTS codec rate, as its in-memory branch expects."""
-    import mlx.core as mx
-    import numpy as np
-    from services.audio_io import load_audio
-    from mlx_audio.utils import resample_audio
-
-    audio, sample_rate = load_audio(path)
-    mono = audio.mean(dim=0).detach().cpu().numpy()
-    if sample_rate != _OUTETTS_CODEC_SAMPLE_RATE:
-        mono = resample_audio(mono, sample_rate, _OUTETTS_CODEC_SAMPLE_RATE, axis=0)
-    return mx.array(np.asarray(mono, dtype=np.float32))
-
-
-#: The Whisper checkpoint mlx-audio's OuteTTS transcribes a reference with.
-_OUTETTS_WHISPER_REPO = "mlx-community/whisper-large-v3-turbo-asr-fp16"
-
-
-def _outetts_whisper_dir() -> str:
-    """Local snapshot of OuteTTS's speaker-building Whisper, never downloaded here.
-
-    mlx-audio resolves it with ``snapshot_download`` from inside the GPU-pool
-    worker, where the download deadlocked for the full 300 s watchdog (#2700).
-    Generation must not fetch models anyway, so a missing checkpoint fails
-    fast and names the catalogue entry that installs it.
-    """
-    from huggingface_hub import snapshot_download
-    from services.hf_revisions import revision_for
-
-    try:
-        return snapshot_download(
-            _OUTETTS_WHISPER_REPO,
-            revision=revision_for(_OUTETTS_WHISPER_REPO),
-            local_files_only=True,
-        )
-    except Exception as exc:
-        raise RuntimeError(
-            "OuteTTS voice cloning needs its Whisper model to read the reference "
-            f"clip. Install \"{_OUTETTS_WHISPER_REPO}\" from the Model Catalogue, "
-            "then generate again."
-        ) from exc
-
-
-def _outetts_speaker_dir() -> str:
-    from core.config import DATA_DIR
-
-    return os.path.join(DATA_DIR, "outetts_speakers")
-
-
-_outetts_speaker_lock = threading.Lock()
-
-
-def _outetts_speaker_file(ref_audio: str) -> str:
-    """Path to an OuteTTS speaker profile for ``ref_audio``, built at most once.
-
-    The profile is keyed by the clip's path, size and mtime, so later
-    generations skip reloading Whisper and re-encoding the clip, and mlx-audio
-    no longer writes a fresh ``outetts_<uuid>.json`` on every call.
-    """
-    import hashlib
-
-    try:
-        st = os.stat(ref_audio)
-    except OSError as e:
-        raise TTSInputError("The reference audio file is missing or unreadable.") from e
-    digest = hashlib.sha256(
-        f"{os.path.abspath(ref_audio)}|{st.st_size}|{st.st_mtime_ns}".encode()
-    ).hexdigest()[:32]
-    path = os.path.join(_outetts_speaker_dir(), f"{digest}.json")
-    if os.path.isfile(path):
-        return path
-    # One build per clip at a time (parallel GPU workers can ask for the same
-    # clip), each writing its own temporary file so a replace never races.
-    with _outetts_speaker_lock:
-        if os.path.isfile(path):
-            return path
-        whisper_dir = _outetts_whisper_dir()
-        from mlx_audio.tts.models.outetts.audio_processor import AudioProcessor
-
-        processor = AudioProcessor()
-        speaker = processor.create_speaker_from_whisper(
-            _outetts_reference_array(ref_audio), whisper_model=whisper_dir,
-        )
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        tmp = f"{path}.{os.getpid()}.{uuid.uuid4().hex}.tmp"
-        try:
-            processor.save_speaker(speaker, tmp)
-            os.replace(tmp, path)
-        finally:
-            with contextlib.suppress(OSError):
-                os.remove(tmp)
-    return path
-
-
 class MLXAudioBackend(TTSBackend):
-    """Blaizzy/mlx-audio — Apple-Silicon-only wrapper over 14+ TTS engines
-    (Kokoro, CSM, Dia, Qwen3-TTS, Chatterbox, MeloTTS, OuteTTS, Spark,
-    Higgs-Audio, Voxtral, LongCat-AudioDiT, KugelAudio, MingOmni, Soprano).
+    """Blaizzy/mlx-audio - Apple-Silicon-only wrapper over MLX TTS engines
+    (VoxCPM2, Kokoro, CSM, Dia, Qwen3-TTS, Chatterbox).
 
     Exposed as a single backend with a `model_id` selector so the Settings
     UI can surface an engine picker within one adapter. The user switches
-    models by setting `OMNIVOICE_MLX_AUDIO_MODEL` or picking from the UI —
-    no code change per engine. Default is Kokoro (82M, multilingual, small).
+    models by setting `OMNIVOICE_MLX_AUDIO_MODEL` or picking from the UI -
+    no code change per engine. Default is VoxCPM2 8-bit (game-dev fork).
 
     Availability: requires mlx (Apple Silicon only). Skipped entirely on
     Linux/Windows/mac-Intel; the dep is platform-gated in pyproject.toml.
     """
 
     id = "mlx-audio"
-    display_name = "MLX-Audio (mac-ARM, 14+ engines: Kokoro, CSM, Dia, Qwen3, …)"
+    display_name = "MLX-Audio (mac-ARM: VoxCPM2, Kokoro, CSM, Dia, Qwen3, Chatterbox)"
     # mlx is Apple-Silicon-only; CPU is the practical fallback when the
     # mlx framework is installed but the user lacks an Apple GPU.
     gpu_compat = ("mps", "cpu")
@@ -3072,10 +2618,8 @@ class MLXAudioBackend(TTSBackend):
         labels = _MLX_AUDIO_MODEL_LABELS
         return tuple(labels.get(model_key, model_key) for model_key in cls.cloning_model_keys)
 
-    # A curated subset surfaced by default — the full mlx-audio roster is
-    # larger but these cover the useful tiers: small multilingual (Kokoro),
-    # voice-clone (CSM), voice-design (Qwen3), European (Kugel), lightweight
-    # VITS (MeloTTS). Users can point at any HF repo via OMNIVOICE_MLX_AUDIO_MODEL.
+    # A curated subset surfaced by default. Users can point at any HF repo via
+    # OMNIVOICE_MLX_AUDIO_MODEL.
     CURATED_MODELS = {
         "kokoro":      "mlx-community/Kokoro-82M-bf16",
         "csm":         "mlx-community/csm-1b-8bit",
@@ -3083,11 +2627,9 @@ class MLXAudioBackend(TTSBackend):
         "qwen3-tts-base": "mlx-community/Qwen3-TTS-12Hz-0.6B-Base-8bit",
         "dia":         "mlx-community/Dia-1.6B",
         "chatterbox":  "mlx-community/Chatterbox-TTS-4bit",
-        "melotts":     "mlx-community/MeloTTS-English-v3-MLX",
-        "outetts":     "mlx-community/Llama-OuteTTS-1.0-1B-4bit",
         "voxcpm2":     "mlx-community/VoxCPM2-8bit",
     }
-    DEFAULT_MODEL_KEY = "kokoro"
+    DEFAULT_MODEL_KEY = "voxcpm2"
 
     # Languages each curated model is documented to speak, as ISO 639-1 codes.
     # Drives both the language picker and the synthesis guard, so neither can
@@ -3100,9 +2642,6 @@ class MLXAudioBackend(TTSBackend):
     #   dia         huggingface.co/nari-labs/Dia-1.6B ("only supports English")
     #   chatterbox  huggingface.co/ResembleAI/chatterbox (base model; Multilingual
     #               is a separate checkpoint)
-    #   melotts     huggingface.co/mlx-community/MeloTTS-English-v3-MLX
-    #   outetts     huggingface.co/OuteAI/Llama-OuteTTS-1.0-1B (high + moderate
-    #               training-data tiers)
     #   voxcpm2     huggingface.co/mlx-community/VoxCPM2-8bit (30 languages,
     #               the same set as VoxCPM2Backend)
     CURATED_MODEL_LANGUAGES: dict[str, tuple[str, ...]] = {
@@ -3112,11 +2651,6 @@ class MLXAudioBackend(TTSBackend):
         "qwen3-tts-base": ("zh", "en", "ja", "ko", "de", "fr", "ru", "pt", "es", "it"),
         "dia": ("en",),
         "chatterbox": ("en",),
-        "melotts": ("en",),
-        "outetts": (
-            "en", "ar", "zh", "nl", "fr", "de", "it", "ja", "ko", "lt", "ru", "es",
-            "pt", "be", "bn", "ka", "hu", "lv", "fa", "pl", "sw", "ta", "uk",
-        ),
         "voxcpm2": (
             "ar", "my", "zh", "da", "nl", "en", "fi", "fr", "de", "el",
             "he", "hi", "id", "it", "ja", "km", "ko", "lo", "ms", "no",
@@ -3278,9 +2812,7 @@ class MLXAudioBackend(TTSBackend):
                 and self._model_id == local_model_path("tts", "mlx-audio")):
             validate("tts", "mlx-audio", self._model_id)
             local_fingerprint = loading_fingerprint(self._model_id)
-        if self._curated_key() == "melotts":
-            _ensure_melotts_text_frontend()
-        elif self._curated_key() == "kokoro":
+        if self._curated_key() == "kokoro":
             # #3367: Kokoro's misaki G2P falls back to espeak-ng, which
             # exit(1)s on an unreadable data path.
             from utils.espeak_data import ensure_espeak_data_path
@@ -3368,8 +2900,6 @@ class MLXAudioBackend(TTSBackend):
         kwargs = {"text": text, "speed": speed}
         if voice:     kwargs["voice"] = voice
         if ref_audio: kwargs["ref_audio"] = ref_audio
-        if self._curated_key() == "melotts":
-            _ensure_melotts_text_frontend()
         if self._curated_key() == "dia":
             # Dia is trained on speaker-tagged dialogue (huggingface.co/nari-labs/
             # Dia-1.6B). Untagged text runs to the full audio length instead of
@@ -3377,14 +2907,6 @@ class MLXAudioBackend(TTSBackend):
             kwargs["text"] = text = _dia_tagged(text)
             if ref_text:
                 ref_text = _dia_tagged(ref_text)
-        if ref_audio and isinstance(ref_audio, str) and self._curated_key() == "outetts":
-            # mlx-audio's OuteTTS only defines its Whisper input on the
-            # in-memory branch, so a file path fails with UnboundLocalError
-            # ('resampled_audio'). It would also download Whisper inside the
-            # GPU worker and hang there (#2700). Build the speaker ourselves
-            # from the local checkpoint and hand mlx-audio the saved profile.
-            kwargs.pop("ref_audio")
-            kwargs["voice"] = _outetts_speaker_file(ref_audio)
         # The comment above claimed instruct was passed "for Qwen3"; it never
         # was. The curated `qwen3-tts` model IS the VoiceDesign variant, which
         # mlx-audio refuses to run without one — so the engine was unusable no
@@ -3925,177 +3447,10 @@ class GPTSoVITSBackend(TTSBackend):
         return wav
 
 
-# ── Sherpa-ONNX adapter (universal ONNX runtime, WASM-ready) ───────────────
 
 
-def _sherpa_model_file(model_dir: str) -> Optional[str]:
-    """Locate the ONNX graph inside a sherpa-onnx voice directory.
-
-    ``model.onnx`` wins when present. Otherwise a directory holding exactly
-    one ``*.onnx`` file (how Piper voices are packaged, named after the voice)
-    uses that file. Nothing found, or several candidates, gives ``None``
-    rather than a guess.
-    """
-    if not model_dir or not os.path.isdir(model_dir):
-        return None
-    preferred = os.path.join(model_dir, "model.onnx")
-    if os.path.isfile(preferred):
-        return preferred
-    candidates = [
-        os.path.join(model_dir, name)
-        for name in sorted(os.listdir(model_dir))
-        if name.lower().endswith(".onnx") and os.path.isfile(os.path.join(model_dir, name))
-    ]
-    return candidates[0] if len(candidates) == 1 else None
 
 
-def _sherpa_vits_extras(model_dir: str) -> dict[str, str]:
-    """Optional phonemizer resources found next to a VITS/Piper model.
-
-    Keys match sherpa-onnx's VITS config fields: ``data_dir`` for an
-    ``espeak-ng-data`` folder and ``lexicon`` for a ``lexicon.txt`` file.
-    """
-    extras: dict[str, str] = {}
-    if not model_dir:
-        return extras
-    espeak_data = os.path.join(model_dir, "espeak-ng-data")
-    if os.path.isdir(espeak_data):
-        extras["data_dir"] = espeak_data
-    lexicon = os.path.join(model_dir, "lexicon.txt")
-    if os.path.isfile(lexicon):
-        extras["lexicon"] = lexicon
-    return extras
-
-
-class SherpaOnnxBackend(TTSBackend):
-    """k2-fsa/sherpa-onnx — unified C++ ONNX runtime for TTS (and ASR).
-
-    Sherpa-ONNX wraps 20+ TTS engines (VITS, MeloTTS, Piper, Kokoro, Matcha,
-    CosyVoice, etc.) under a single runtime with pre-built wheels for:
-      • Linux / Windows / macOS (x86 + ARM)
-      • Android / iOS
-      • WebAssembly (browser)
-
-    This is the bridge to browser-based VoiceStudio: the same engine runs natively
-    on desktop and compiles to WASM for the web UI.
-
-    Install: pip install sherpa-onnx
-    Models: download from https://github.com/k2-fsa/sherpa-onnx/releases
-
-    Set ``OMNIVOICE_SHERPA_MODEL`` to the model directory path.
-    """
-
-    id = "sherpa-onnx"
-    display_name = "Sherpa-ONNX (20+ engines, WASM-ready, universal runtime)"
-    # Sherpa-ONNX uses the onnxruntime providers — CPU is the universal
-    # baseline; CUDA provider is available on Linux/Windows installs.
-    gpu_compat = ("cuda", "cpu")
-    supports_cloning = False  # VITS speaker-id only; no ref_audio support
-    supports_voice_design = False  # speaker ids only; instruct is never read (#3413)
-    # generate() calls VITS generate(text, sid, speed) — no knobs (#3654).
-    supports_num_step = False
-    supports_guidance_scale = False
-
-    def __init__(self):
-        self._tts = None
-        self._model_dir = os.environ.get("OMNIVOICE_SHERPA_MODEL", "")
-
-    def model_identity(self) -> Optional[str]:
-        model_dir = (self._model_dir or "").strip()
-        return os.path.basename(os.path.normpath(model_dir)) if model_dir else None
-
-    @classmethod
-    def is_available(cls) -> tuple[bool, str]:
-        try:
-            import sherpa_onnx  # noqa: F401
-        except ImportError as e:
-            return False, (
-                f"sherpa-onnx not installed: {e}. "
-                "Install with: pip install sherpa-onnx. "
-                "Download models from https://github.com/k2-fsa/sherpa-onnx/releases"
-            )
-        # #919: sherpa-onnx ships no bundled default model — it can only
-        # synthesize once OMNIVOICE_SHERPA_MODEL points at a downloaded model
-        # directory. Gate on it here (like the other path-configured opt-in
-        # engines: Confucius4/dots/MOSS) so the picker marks it unavailable-
-        # with-a-reason instead of letting a user select it, generate, and hit
-        # a config error that used to be mislabeled as out-of-memory.
-        model_dir = os.environ.get("OMNIVOICE_SHERPA_MODEL", "").strip()
-        if not model_dir:
-            return False, (
-                "OMNIVOICE_SHERPA_MODEL not set. Point it to a sherpa-onnx TTS "
-                "model directory (containing model.onnx + tokens.txt), then "
-                "restart VoiceStudio. Download models from "
-                "https://github.com/k2-fsa/sherpa-onnx/releases"
-            )
-        if _sherpa_model_file(model_dir) is None:
-            return False, (
-                f"OMNIVOICE_SHERPA_MODEL points to {model_dir!r}, but that directory "
-                "does not contain model.onnx or exactly one voice-named .onnx file. "
-                "Choose a sherpa-onnx TTS model directory containing that model and "
-                "tokens.txt (Piper archives use a per-voice filename). Download models "
-                "from https://github.com/k2-fsa/sherpa-onnx/releases"
-            )
-        return True, "ready"
-
-    @property
-    def sample_rate(self) -> int:
-        if self._tts is not None:
-            return self._tts.sample_rate
-        return 22050  # VITS default
-
-    @property
-    def supported_languages(self) -> list[str]:
-        return ["multi"]  # depends on loaded model
-
-    def _ensure_loaded(self):
-        if self._tts is not None:
-            return
-
-        ok, msg = self.is_available()
-        if not ok:
-            raise RuntimeError(f"Sherpa-ONNX unavailable: {msg}")
-
-        import sherpa_onnx
-
-        if not self._model_dir:
-            raise RuntimeError(
-                "OMNIVOICE_SHERPA_MODEL not set. Point it to a sherpa-onnx "
-                "TTS model directory (containing model.onnx + tokens.txt)."
-            )
-
-        model_file = _sherpa_model_file(self._model_dir)
-        tokens_file = os.path.join(self._model_dir, "tokens.txt")
-        if model_file is None:
-            raise RuntimeError(
-                f"No model.onnx found in {self._model_dir}. "
-                "Download a model from https://github.com/k2-fsa/sherpa-onnx/releases"
-            )
-
-        logger.info("Loading sherpa-onnx TTS from %s", self._model_dir)
-        config = sherpa_onnx.OfflineTtsConfig(
-            model=sherpa_onnx.OfflineTtsModelConfig(
-                vits=sherpa_onnx.OfflineTtsVitsModelConfig(
-                    model=model_file,
-                    tokens=tokens_file,
-                    **_sherpa_vits_extras(self._model_dir),
-                )
-            )
-        )
-        self._tts = sherpa_onnx.OfflineTts(config)
-
-    def generate(self, text: str, **kw) -> torch.Tensor:
-        import numpy as np
-        self._ensure_loaded()
-
-        speed = float(kw.get("speed", 1.0))
-        # sherpa-onnx speaker ID (for multi-speaker VITS models)
-        sid = int(kw.get("speaker_id", 0))
-
-        audio = self._tts.generate(text, sid=sid, speed=speed)
-        wav = np.array(audio.samples, dtype=np.float32)
-        wav = torch.from_numpy(wav).unsqueeze(0)  # (1, n_samples)
-        return wav
 
 
 # ── Registry ────────────────────────────────────────────────────────────────
@@ -4111,17 +3466,6 @@ class SherpaOnnxBackend(TTSBackend):
 _LAZY_REGISTRY: dict[str, tuple[str, str]] = {
     "qwen3-tts": ("services.qwen_cuda", "QwenCUDABackend"),
     "indextts2": ("engines.indextts", "IndexTTS2Backend"),
-    # Phase 4 Plan 04-01 (GGUF-03): hardware-adaptive GGUF runtime wrapper.
-    # Lazy so the import of services.tts_backend doesn't pull
-    # huggingface_hub + soundfile transitively when callers only need
-    # the in-process OmniVoice. Resolves on first attribute / item access.
-    "omnivoice-gguf": ("engines.omnivoice_gguf", "OmniVoiceGGUFBackend"),
-    # Phase 3 Plan 03-01 (TTS-01): Supertonic-3 lives in its own engine
-    # package for the same import-cycle reason as IndexTTS2 (its backend
-    # module imports services.subprocess_backend which in turn imports
-    # this module for TTSBackend). The class is resolved on first
-    # attribute access via the LazyRegistry below.
-    "supertonic3": ("engines.supertonic3", "Supertonic3Backend"),
     # Issue #498: MOSS-TTS-v1.5 (8B) and dots.tts (2B) — both opt-in,
     # subprocess-isolated with their own venv because each pins a
     # transformers version that conflicts with the parent's >=5.3
@@ -4129,39 +3473,18 @@ _LAZY_REGISTRY: dict[str, tuple[str, str]] = {
     # IndexTTS2. Lazy for the same import-cycle reason as the entries above.
     "moss-tts-v15": ("engines.moss_tts_v15", "MossTTSV15Backend"),
     "dots-tts": ("engines.dots_tts", "DotsTTSBackend"),
-    # The resident OmniVoice model in a crash-isolated sidecar (#730/#1190):
-    # same model and quality as the in-process "omnivoice" engine, but a wedged
-    # generate can be hard-killed to reclaim VRAM/device. Opt-in (the in-process
-    # engine stays the default). Unlike the entries above it runs under the
-    # parent interpreter (crash isolation, not dependency isolation).
-    "omnivoice-subprocess": ("engines.omnivoice_subprocess", "OmniVoiceSubprocessBackend"),
     # Issue #1306: Kyutai PocketTTS, CPU-only, low-latency TTS hired for the
     # "fastest CPU render / lowest latency" job. Opt-in, subprocess-isolated
-    # under the parent interpreter (crash isolation, not dependency isolation,
-    # same as omnivoice-subprocess: pocket-tts deps sit at the parent's pins).
+    # under the parent interpreter (crash isolation, not dependency isolation:
+    # pocket-tts deps sit at the parent's pins).
     "pockettts": ("engines.pockettts", "PocketTTSBackend"),
-    # Issue #590: Confucius4-TTS (netease-youdao) — LLM-based, 14-language
-    # cross-lingual zero-shot cloning, Apache-2.0. Opt-in + subprocess-isolated
-    # (own Python 3.10 venv) like the entries above. Validated end-to-end
-    # 2026-07-02 (CPU, Apple Silicon; 22.05 kHz output). Gated behind
-    # OMNIVOICE_CONFUCIUS4_TTS_DIR so it's inert until enabled.
-    "confucius4-tts": ("engines.confucius4", "Confucius4Backend"),
-    # Issue #3793: Ming-3.0-tts-0.5b (inclusionAI) — opt-in, NVIDIA-CUDA-only,
-    # own Python 3.10 venv (upstream pins transformers==4.46.3 / torch==2.6.0,
-    # which conflict with the parent's >=5.3). Gated behind its venv + a CUDA host.
-    "ming-tts": ("engines.ming_tts", "MingTTSBackend"),
-    # audio.cpp (0xShug0/audio.cpp) — pure-C++ ggml runtime, no Python venv.
-    # v1 serves Breeze-TTS-2 (en+zh, clone+design) through a parent-managed
-    # audiocpp_server over loopback HTTP. Gated behind a server binary
-    # (OMNIVOICE_AUDIOCPP_BIN) so it's inert until enabled. Lazy for the
-    # same import-cycle reason as the entries above (engines.audiocpp
-    # imports services.tts_backend for TTSBackend).
-    "audiocpp": ("engines.audiocpp", "AudioCPPBackend"),
     # dots.tts SOAR on the same managed audio.cpp runtime (#2665): native on
-    # Windows too, unlike the venv `dots-tts` engine. Gated like `audiocpp`.
+    # Windows too, unlike the venv `dots-tts` engine.
     "audiocpp-dots": ("engines.audiocpp", "AudioCPPDotsBackend"),
     # Community CosyVoice.cpp GGUF server, explicitly installed and isolated.
     "cosyvoice-gguf": ("engines.cosyvoice_gguf", "CosyVoiceGGUFBackend"),
+    # Voice Forge Phase 2: Maya-1 3.3B MLX (inline acting tags).
+    "maya1": ("services.maya1_backend", "Maya1Backend"),
 }
 
 
@@ -4225,14 +3548,13 @@ class _LazyRegistry(dict):
 _REGISTRY: dict[str, type[TTSBackend]] = _LazyRegistry({
     "omnivoice":     OmniVoiceBackend,
     "cosyvoice":     CosyVoiceBackend,
-    "kittentts":     KittenTTSBackend,
     "mlx-audio":     MLXAudioBackend,
     "voxcpm2":       VoxCPM2Backend,
-    "moss-tts-nano": MossTTSNanoBackend,
     # "indextts2": resolved lazily via _LAZY_REGISTRY -> engines.indextts
     "gpt-sovits":    GPTSoVITSBackend,
-    "sherpa-onnx":   SherpaOnnxBackend,
 })
+
+HIDDEN_TTS: frozenset[str] = frozenset({"omnivoice"})
 
 
 # ── ENGINE-06 last-error cache ─────────────────────────────────────────────
@@ -4251,24 +3573,15 @@ _LAST_ERRORS: dict[str, str] = {}
 # Helps users understand what pip package to install and where.
 _INSTALL_HINTS: dict[str, str] = {
     "omnivoice":     "pip install omnivoice  (bundled — no extra install needed)",
-    "omnivoice-subprocess": "No extra install; uses the host OmniVoice install. Opt in with OMNIVOICE_TTS_BACKEND=omnivoice-subprocess (same model in a killable sidecar, for unattended reliability).",
     "cosyvoice":     "git clone --recursive FunAudioLLM/CosyVoice + pip install -r requirements.txt + SoX",
-    "kittentts":     "pip install kittentts  (ONNX, CPU-only, ~80 MB)",
     "mlx-audio":     "pip install mlx-audio  (Apple Silicon only)",
     "qwen3-tts":     "Operator-provisioned CUDA engine. See docs/engines/mlx-audio.md for setup.",
     "voxcpm2":       'pip install "voxcpm>=2.0.3"  (floor: 2.0.3 fixed Apple-Silicon audio quality; CPU/MPS supported, CUDA recommended for speed)',
-    "moss-tts-nano": "git clone OpenMOSS/MOSS-TTS-Nano && pip install -e .  (not on PyPI)",
     "indextts2":     "git clone --branch indextts-2.5 https://github.com/index-tts/index-tts.git && cd index-tts && uv venv .venv && uv pip install --python .venv/bin/python -e .  (Windows: .venv\\Scripts\\python.exe; NOT uv sync --all-extras)",
     "gpt-sovits":    "External API server — start api_v2.py on port 9880",
-    "sherpa-onnx":   "pip install sherpa-onnx  (universal ONNX runtime, WASM-ready)",
-    "omnivoice-gguf":"Bundled — runs the C++ omnivoice-tts binary in bin/. An installed quant pair is reused; a missing one downloads from Serveurperso/OmniVoice-GGUF (pinned revision) on first generate. Offline hosts: see docs/engines/omnivoice-gguf.md.",
-    "supertonic3":   "uv sync --extra supertonic  (CPU-only ONNX, 31 langs, ~400 MB model on first use; OpenRAIL-M model license)",
     "pockettts":     "uv sync --extra pockettts  (Kyutai, CPU-only, ~100 MB model on first use; MIT code + CC-BY-4.0 weights; HF-gated, review terms and set HF_TOKEN)",
     "moss-tts-v15":  "git clone OpenMOSS/MOSS-TTS + set OMNIVOICE_MOSS_TTS_V15_DIR  (own venv, transformers==5.0; 8B, ~16 GB weights; CUDA/ROCm/XPU/NPU/CPU, no MPS; Apache-2.0)",
     "dots-tts":      "git clone rednote-hilab/dots.tts + set OMNIVOICE_DOTS_TTS_DIR  (own venv, transformers==4.57; 2B, ~9 GB weights; CUDA/CPU, Linux/macOS only — on Windows use the audio.cpp dots.tts engine; Apache-2.0)",
-    "confucius4-tts":"git clone netease-youdao/Confucius4-TTS + set OMNIVOICE_CONFUCIUS4_TTS_DIR  (own Python 3.10 venv; 14-lang cross-lingual zero-shot clone; ~5 GB weights auto-download; CUDA/ROCm/XPU/NPU/CPU, no MPS; Apache-2.0)",
-    "ming-tts":      "git clone inclusionAI/Ming-3.0-tts + set OMNIVOICE_MING_TTS_DIR  (own Python 3.10 venv, transformers==4.46.3; 0.5B, ~3 GB weights auto-download; 7 langs zero-shot clone; NVIDIA CUDA only; MIT)",
-    "audiocpp":     "download the matching audio.cpp v0.9.4 prebuilt + set OMNIVOICE_AUDIOCPP_BIN, then explicitly install Breeze-TTS-2 in Model Catalogue → Models  (native CPU/Vulkan/CUDA/Metal GGUF server, no Python; en+zh clone+design; ~4.73 GiB; weights research/non-commercial only)",
     "audiocpp-dots": "download the matching audio.cpp v0.9.4 prebuilt (Model Catalogue installs it) + explicitly install dots.tts SOAR in Model Catalogue → Models  (native CPU/Vulkan/CUDA/Metal GGUF on Windows, macOS and Linux; multilingual voice cloning; ~3 GB; Apache-2.0)",
     "cosyvoice-gguf": "Build Lourdle/cosyvoice.cpp at the documented pinned revision with Vulkan enabled; set OMNIVOICE_COSYVOICE_GGUF_DIR and install its GGUF/ONNX model assets from Model Catalogue (native Vulkan/CPU; no automatic runtime download).",
 }
@@ -4285,10 +3598,6 @@ _SETUP_SNIPPETS: dict[str, str] = {
     "indextts2":      "export OMNIVOICE_INDEXTTS_DIR=/path/to/index-tts",
     "moss-tts-v15":   "export OMNIVOICE_MOSS_TTS_V15_DIR=/path/to/MOSS-TTS",
     "dots-tts":       "export OMNIVOICE_DOTS_TTS_DIR=/path/to/dots.tts",
-    "confucius4-tts": "export OMNIVOICE_CONFUCIUS4_TTS_DIR=/path/to/Confucius4-TTS",
-    "ming-tts":       "export OMNIVOICE_MING_TTS_DIR=/path/to/Ming-3.0-tts",
-    # #919: sherpa-onnx gates on a downloaded model dir (model.onnx + tokens.txt).
-    "sherpa-onnx":    "export OMNIVOICE_SHERPA_MODEL=/path/to/sherpa-onnx-model",
 }
 
 
@@ -4303,23 +3612,14 @@ _SETUP_SNIPPETS: dict[str, str] = {
 # match the id (indextts2 → indextts.md).
 _ENGINE_DOCS: dict[str, str] = {
     "omnivoice":            "docs/engines/omnivoice.md",
-    "omnivoice-subprocess": "docs/engines/omnivoice-subprocess.md",
-    "omnivoice-gguf":       "docs/engines/omnivoice-gguf.md",
     "cosyvoice":            "docs/engines/cosyvoice.md",
-    "kittentts":            "docs/engines/kittentts.md",
     "mlx-audio":            "docs/engines/mlx-audio.md",
     "voxcpm2":              "docs/engines/voxcpm2.md",
-    "moss-tts-nano":        "docs/engines/moss-tts-nano.md",
     "moss-tts-v15":         "docs/engines/moss-tts-v15.md",
     "dots-tts":             "docs/engines/dots-tts.md",
-    "confucius4-tts":       "docs/engines/confucius4-tts.md",
-    "ming-tts":             "docs/engines/ming-tts.md",
     "indextts2":            "docs/engines/indextts.md",
     "gpt-sovits":           "docs/engines/gpt-sovits.md",
-    "sherpa-onnx":          "docs/engines/sherpa-onnx.md",
-    "supertonic3":          "docs/engines/supertonic3.md",
     "pockettts":            "docs/engines/pockettts.md",
-    "audiocpp":             "docs/engines/audio-cpp.md",
     "audiocpp-dots":        "docs/engines/audio-cpp.md",
     "cosyvoice-gguf":       "docs/engines/cosyvoice-gguf.md",
     "qwen3-tts":            "docs/engines/mlx-audio.md",
@@ -4346,15 +3646,13 @@ def _engine_docs_url(bid: str) -> str | None:
 # Single-sourced here rather than on MLXAudioBackend.CURATED_MODELS itself so
 # the class dict stays a plain key → repo-id map (what __init__ needs).
 _MLX_AUDIO_MODEL_LABELS: dict[str, str] = {
-    "kokoro":     "Kokoro (default, fast)",
+    "kokoro":     "Kokoro (fast)",
     "csm":        "CSM (voice cloning)",
     "qwen3-tts":  "Qwen3-TTS (voice design)",
     "qwen3-tts-base": "Qwen3-TTS Base (voice cloning)",
     "dia":        "Dia",
     "chatterbox": "Chatterbox",
-    "melotts":    "MeloTTS (lightweight)",
-    "outetts":    "OuteTTS",
-    "voxcpm2":    "VoxCPM2 8-bit (30 languages, 48 kHz)",
+    "voxcpm2":    "VoxCPM2 8-bit (default, 30 languages, 48 kHz)",
 }
 
 
@@ -4461,7 +3759,7 @@ def list_backends(*, include_hidden: bool = False) -> list[dict]:
 
     out: list[dict] = []
     for bid, cls in _REGISTRY.items():
-        if not include_hidden and caps.family == "mps" and bid == "omnivoice-subprocess":
+        if not include_hidden and bid in HIDDEN_TTS:
             continue
         cls = _effective_backend_class(bid, cls, caps.family)
         try:
@@ -4617,7 +3915,6 @@ def list_backends(*, include_hidden: bool = False) -> list[dict]:
 # keeps running in-process.
 _OWN_VENV_SIDECARS: dict[str, tuple[str, str]] = {
     "voxcpm2": ("engines.voxcpm2_subprocess", "VoxCPM2SubprocessBackend"),
-    "moss-tts-nano": ("engines.moss_tts_nano_subprocess", "MossTTSNanoSubprocessBackend"),
     "cosyvoice": ("engines.cosyvoice_subprocess", "CosyVoiceSubprocessBackend"),
 }
 
@@ -4678,7 +3975,7 @@ def language_options(backend_id: str) -> Optional[list[str]]:
     try:
         # The native OmniVoice adapters use this exact vocabulary at inference,
         # plus the app picker names it resolves ("Arabic" for dub, #3651).
-        if backend_id in {"omnivoice", "omnivoice-subprocess", "omnivoice-gguf"}:
+        if backend_id == "omnivoice":
             return with_variant_names(sorted(set(LANG_NAME_TO_ID) | set(APP_LANGUAGE_NAMES)))
         backend = get_backend_class(backend_id)()
         if backend_id == "mlx-audio" and backend.model_identity() == backend.CURATED_MODELS.get("kokoro"):
@@ -4896,11 +4193,23 @@ def gpu_routing_verdict() -> dict:
     }
 
 
+def default_tts_backend_id() -> str:
+    """Platform default TTS engine: mlx-audio on Apple Silicon, voxcpm2 elsewhere."""
+    if sys.platform == "darwin" and platform.machine() == "arm64":
+        return "mlx-audio"
+    return "voxcpm2"
+
+
 def active_backend_id() -> str:
-    # Env var > persisted UI choice > default. Env wins so power-users can
-    # pin a backend without the Settings picker silently undoing it.
+    # Env var > persisted UI choice > platform default. An id that is no longer
+    # registered (an engine removed by the fork) falls back to the default.
     from core import prefs
-    return prefs.resolve("tts_backend", env="OMNIVOICE_TTS_BACKEND", default="omnivoice")
+    default = default_tts_backend_id()
+    chosen = prefs.resolve("tts_backend", env="OMNIVOICE_TTS_BACKEND", default=default)
+    if chosen not in _REGISTRY:
+        logger.warning("Saved TTS engine %r is not available in this build; using %r", chosen, default)
+        return default
+    return chosen
 
 
 # Cached active backend instance + its id (MM2-01). Without this, every call
@@ -5359,5 +4668,6 @@ def __getattr__(name: str):  # pragma: no cover - exercised via tests
     if name == "IndexTTS2Backend":
         return _REGISTRY["indextts2"]
     if name == "AudioCPPBackend":
-        return _REGISTRY["audiocpp"]
+        from engines.audiocpp import AudioCPPBackend
+        return AudioCPPBackend
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

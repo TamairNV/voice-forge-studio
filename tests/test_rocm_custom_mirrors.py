@@ -27,7 +27,7 @@ def test_shared_stack_mirror_without_named_tail_requires_hip_wheel(monkeypatch):
     assert "torchaudio==2.10.0+rocm7.1" in args
 
 
-@pytest.mark.parametrize("engine", ["cosyvoice", "moss-tts-nano", "confucius4-tts"])
+@pytest.mark.parametrize("engine", ["cosyvoice"])
 def test_custom_mirror_does_not_override_engine_rocm_version(monkeypatch, engine):
     monkeypatch.setattr(si.sys, "platform", "linux")
     monkeypatch.setattr(si, "_host_family", lambda: "rocm")
@@ -76,16 +76,6 @@ def test_nemo_and_funasr_only_claim_rocm_for_non_windows_hosts():
     from services.asr_backend import FunASRBackend, NeMoASRBackend
     for engine in (FunASRBackend, NeMoASRBackend):
         assert ("rocm" in engine.gpu_compat) == (os.name != "nt")
-
-
-def test_unresolved_sidecar_does_not_advertise_acceleration(monkeypatch):
-    from core.device_caps import HostCaps
-    from engines.confucius4 import Confucius4Backend
-    monkeypatch.setattr(Confucius4Backend, "sidecar_python_hint", classmethod(lambda cls: None))
-    caps = HostCaps(family="rocm", available_families=("rocm", "cpu"), vram_gb=12.0)
-    result = Confucius4Backend.runtime_compute_profile(caps)
-    assert result["effective_device"] == "unknown"
-    assert result["routing_status"] == "unknown"
 
 
 def test_unknown_route_gets_conservative_cpu_budget(monkeypatch):

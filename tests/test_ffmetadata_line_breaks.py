@@ -57,18 +57,6 @@ def test_description_paragraphs_survive_the_mux(tmp_path, fmt, sep):
     assert "Opening paragraph." in comment and "Closing paragraph." in comment
 
 
-def test_mux_inputs_are_written_with_bare_lf():
-    """Text-mode writes turn LF into CRLF on Windows, which ends the escaped
-    multi-paragraph tag early there only; the router must use the LF writer."""
-    import inspect
-
-    from api.routers import audiobook
-
-    src = inspect.getsource(audiobook)
-    assert "write_lf_text(meta_path" in src and "write_lf_text(concat_path" in src
-    assert 'open(meta_path, "w"' not in src and 'open(concat_path, "w"' not in src
-
-
 def test_write_lf_text_is_byte_exact(tmp_path):
     from services.longform_render import write_lf_text
 

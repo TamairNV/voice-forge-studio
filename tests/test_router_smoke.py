@@ -155,7 +155,7 @@ def test_engines_tts_lists_all_backends(client):
     r = client.get("/engines/tts")
     assert r.status_code == 200
     ids = {b["id"] for b in r.json()["backends"]}
-    assert {"omnivoice", "voxcpm2", "moss-tts-nano"}.issubset(ids)
+    assert {"voxcpm2", "cosyvoice", "moss-tts-v15"}.issubset(ids)
 
 
 def test_engines_select_refuses_unavailable_backend(client):
@@ -227,13 +227,6 @@ def test_history_list_smoke(client):
     assert isinstance(r.json(), list)
 
 
-# ── dub_core ────────────────────────────────────────────────────────────────
-def test_dub_history_list_smoke(client):
-    r = client.get("/dub/history")
-    assert r.status_code == 200
-    assert isinstance(r.json(), list)
-
-
 # ── jobs (Phase 2.1) ────────────────────────────────────────────────────────
 def test_jobs_list_smoke(client):
     r = client.get("/jobs")
@@ -259,18 +252,3 @@ def test_job_get_404(client):
 def test_job_events_404(client):
     r = client.get("/jobs/__nonexistent__/events")
     assert r.status_code == 404
-
-
-def test_dub_generate_unknown_job(client):
-    # Hitting /dub/generate/{id} with a non-existent id should surface the
-    # rewritten 404 copy.
-    r = client.post("/dub/generate/__nonexistent__", json={
-        "segments": [{"start": 0.0, "end": 1.0, "text": "hello"}],
-        "language": "Auto",
-        "language_code": "und",
-        "num_step": 16,
-        "guidance_scale": 2.0,
-        "speed": 1.0,
-    })
-    assert r.status_code == 404
-    assert "re-upload" in r.json()["detail"].lower()

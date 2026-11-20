@@ -7,8 +7,8 @@ The branch was integrated with main on 2026-10-05; see the [integration refresh]
 for landed changes and current overlap. Historical probes remain pinned to their original baseline.
 
 - [Remaining findings, merged fixes and open-PR overlap](review.md)
-- Current behavior: [runtime](../../electron-runtime.md), [model downloads](../../downloading-models.md),
-  [repair](../../electron-repair.md), [uninstall](../../install/uninstall.md)
+- Current behavior: runtime, [model downloads](../../downloading-models.md),
+  repair, [uninstall](../../install/uninstall.md)
 
 ![Illustrative plan, progress and recovery screens; not implemented UI](../../assets/installer-redesign.svg)
 

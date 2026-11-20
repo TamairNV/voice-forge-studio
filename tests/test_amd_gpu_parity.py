@@ -25,10 +25,8 @@ def _rocm():
 # (module, class) of every sidecar PyTorch engine with a cheap venv lookup.
 _SIDECARS = [
     ("engines.voxcpm2_subprocess", "VoxCPM2SubprocessBackend"),
-    ("engines.moss_tts_nano_subprocess", "MossTTSNanoSubprocessBackend"),
     ("engines.cosyvoice_subprocess", "CosyVoiceSubprocessBackend"),
     ("engines.dots_tts", "DotsTTSBackend"),
-    ("engines.confucius4", "Confucius4Backend"),
     ("engines.moss_tts_v15", "MossTTSV15Backend"),
 ]
 
@@ -58,7 +56,6 @@ def test_sidecar_engines_claim_rocm(module, name):
     ("module", "name"),
     [
         ("services.tts_backend", "VoxCPM2Backend"),
-        ("services.tts_backend", "MossTTSNanoBackend"),
         ("services.tts_backend", "CosyVoiceBackend"),
     ],
 )
@@ -122,9 +119,10 @@ def test_marker_install_with_old_torch_is_offered_the_rocm_repair(monkeypatch, t
     """A complete MOSS-TTS-Nano install made before it took a ROCm torch on
     this host reads unhealthy, so the catalogue offers the dependency repair
     (the step is idempotent: the venv stays, torch is swapped)."""
+    from dataclasses import replace
     from services import sidecar_install as si
 
-    spec = si.get_spec("moss-tts-nano")
+    spec = replace(si.get_spec("cosyvoice"), weights_repo_id=None)
     checkout = tmp_path / "managed-cosy-independent"
     monkeypatch.setattr(si, "managed_checkout", lambda s: checkout)
     checkout.mkdir(parents=True, exist_ok=True)

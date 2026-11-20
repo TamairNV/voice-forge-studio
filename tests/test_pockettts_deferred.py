@@ -95,27 +95,6 @@ def test_direct_construction_rejects_intel_mac(monkeypatch, mock_settings_store)
         _backend_cls()()
 
 
-def test_ci_verifies_intel_mac_as_the_documented_remote_only_host():
-    from pathlib import Path
-
-    workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/ci.yml").read_text(
-        "utf-8"
-    )
-    assert "label: macOS Intel\n            backend_supported: false" in workflow
-    assert "name: Verify the documented Intel Mac contract" in workflow
-    # What must hold is that the pockettts extra is installed ONLY on the
-    # backend-supported legs — not how the sync is invoked. Pinning the exact
-    # command made an unrelated CI hardening change (routing every sync through
-    # scripts/uv-sync-retry.sh) look like a broken Intel-Mac contract.
-    assert re.search(
-        r"if: (steps\.pass\.outputs\.hit != 'true' && )?matrix\.backend_supported\n        run: .*--extra pockettts", workflow
-    ), "the pockettts extra must be installed only on backend_supported legs"
-    assert re.search(
-        r"if: (steps\.pass\.outputs\.hit != 'true' && )?matrix\.backend_supported\n        run: uv run .*pytest tests/smoke/", workflow
-    ), "the smoke suite must run only on backend_supported legs"
-    assert "HF_HUB_CACHE: ${{ runner.temp }}/pockettts-empty-hf-cache" in workflow
-
-
 @pytest.mark.parametrize(
     ("ref", "valid"),
     [
@@ -134,39 +113,10 @@ def test_cache_apt_action_pin_policy(ref, valid):
     assert (re.fullmatch(pattern, ref) is not None) is valid
 
 
-def test_cache_apt_action_is_pinned_in_every_workflow():
-    from pathlib import Path
-
-    workflows = Path(__file__).resolve().parents[1] / ".github/workflows"
-    paths = _workflow_paths(workflows)
-    assert paths
-    for path in paths:
-        text = path.read_text("utf-8")
-        refs = re.findall(r"awalsh128/cache-apt-pkgs-action@([^\s#]+)", text)
-        for ref in refs:
-            assert re.fullmatch(r"v\d+(?:\.\d+){0,2}|[0-9a-f]{40}", ref), (
-                path,
-                ref,
-            )
-
-
 def test_workflow_pin_scan_includes_both_yaml_extensions(tmp_path):
     (tmp_path / "one.yml").touch()
     (tmp_path / "two.yaml").touch()
     assert [path.name for path in _workflow_paths(tmp_path)] == ["one.yml", "two.yaml"]
-
-
-def test_every_locale_discloses_hugging_face_model_access():
-    import json
-    from pathlib import Path
-
-    root = Path(__file__).resolve().parents[1] / "electron/src"
-    paths = sorted((root / "renderer/src/i18n/locales").glob("*.json"))
-    assert "en.json" in {p.name for p in paths}
-    for path in paths:
-        strings = json.loads(path.read_text("utf-8"))
-        footer = strings["license"]["pockettts_footer"]
-        assert "Hugging Face" in footer, path
 
 
 @pytest.mark.parametrize(

@@ -5,56 +5,7 @@ import json
 import pytest
 from test_diagnostic_reports import reporter  # noqa: F401
 from test_download_install_integrity import install_origin  # noqa: F401
-from test_dub_batch_engine_selection import dub_job_env, fake_registry  # noqa: F401
 
-
-@pytest.mark.parametrize("kind", ["memory", "compute", "subclass"])
-def test_actual_dub_terminal_error_keeps_one_causal_report(reporter, dub_job_env, fake_registry, monkeypatch, kind):
-    from test_dub_batch_engine_selection import _one_seg_request
-    tasks = importlib.import_module('core.tasks')
-    dg, _job = dub_job_env
-    engine = fake_registry('fake-diagnostic-oom', supports_cloning=True)
-    monkeypatch.setenv('OMNIVOICE_TTS_BACKEND', 'fake-diagnostic-oom')
-    for name in ('create', 'mark_running', 'mark_failed', 'mark_done', 'mark_cancelled'):
-        monkeypatch.setattr(tasks.job_store, name, lambda *args, **kwargs: None)
-    monkeypatch.setattr(tasks.run_sentinel, 'touch_activity', lambda *args, **kwargs: None)
-    published = []
-    monkeypatch.setattr(tasks.job_store, 'append_event', lambda _identity, event: published.append(str(event)) or len(published))
-    reporter.consent(True)
-
-    from services.model_manager import GpuJobTimeoutError
-
-    class ComputeDeadline(GpuJobTimeoutError):
-        pass
-
-    error = {"memory": MemoryError, "compute": GpuJobTimeoutError, "subclass": ComputeDeadline}[kind]
-
-    def fail(self, text, **kwargs):
-        raise error('private failing allocation')
-
-    monkeypatch.setattr(engine, 'generate', fail)
-
-    async def run():
-        manager = tasks.TaskManager()
-        monkeypatch.setattr(dg, 'task_manager', manager)
-        result = await dg.dub_generate('jobX', _one_seg_request())
-        worker = asyncio.create_task(manager.worker())
-        try:
-            await asyncio.wait_for(manager.queue.join(), 5)
-            assert manager.active_tasks[result['task_id']]['status'] == 'failed'
-        finally:
-            worker.cancel()
-            await asyncio.gather(worker, return_exceptions=True)
-
-    asyncio.run(run())
-    reporter._tick()
-    rows = reporter._files()
-    assert len(rows) == 1
-    assert rows[0]['props']['error_type'] == ('MemoryError' if kind == 'memory' else 'TimeoutError')
-    assert rows[0]['props']['error_code'] == ('HOST_MEMORY_EXHAUSTED' if kind == 'memory' else 'GPU_JOB_TIMEOUT')
-    assert rows[0]['props']['occurrences'] == 1
-    assert any('"type": "error"' in event for event in published)
-    assert all('diagnostic' not in event and 'private' not in event for event in published)
 
 @pytest.mark.parametrize('choice',['unchanged','replacement','later_opt_in'])
 @pytest.mark.parametrize('mode',['raise','terminal_frame'])
@@ -326,151 +277,6 @@ def test_sibling_async_units_do_not_share_or_leave_authority(reporter):
     assert len(reporter._files())==2
 
 
-@pytest.mark.parametrize('choice',['unchanged','replacement','later_opt_in'])
-def test_actual_batch_worker_completed_fault_cannot_borrow_new_grant(reporter, monkeypatch, choice):
-    batch=importlib.import_module('api.routers.batch')
-    reporter.consent(choice!='later_opt_in')
-    async def run():
-        queue=asyncio.Queue();entered=asyncio.Event();fault=asyncio.get_running_loop().create_future()
-        jobs={'owned-fixture':{'status':'pending','filename':'fixture.wav'}}
-        monkeypatch.setattr(batch,'_queue',queue);monkeypatch.setattr(batch,'_jobs',jobs);monkeypatch.setattr(batch,'_processing_job_ids',set())
-        async def pipeline(*args):entered.set();await fault
-        monkeypatch.setattr(batch,'_run_batch_pipeline',pipeline)
-        await queue.put('owned-fixture');worker=asyncio.create_task(batch._worker())
-        try:
-            await asyncio.wait_for(entered.wait(),2)
-            fault.set_exception(RuntimeError('old completed batch fault'))
-            if choice=='replacement':reporter.consent(False);reporter.consent(True)
-            elif choice=='later_opt_in':reporter.consent(True)
-            await asyncio.wait_for(queue.join(),2)
-            assert jobs['owned-fixture']['status']=='failed'
-        finally:
-            worker.cancel();await asyncio.gather(worker,return_exceptions=True)
-    asyncio.run(run());reporter._tick()
-    assert len(reporter._files())==int(choice=='unchanged'), 'Old batch completion borrowed a later grant'
-
-
-@pytest.mark.parametrize('initial_owner', ['off', 'replaced'])
-def test_reused_batch_worker_observes_each_new_job_grant(reporter, monkeypatch, initial_owner):
-    batch = importlib.import_module('api.routers.batch')
-    reports = importlib.import_module('core.diagnostic_reports')
-    reporter.consent(initial_owner == 'replaced')
-
-    async def run():
-        queue = asyncio.Queue()
-        jobs = {identity: {'status': 'pending', 'filename': 'fixture.wav'}
-                for identity in ('first-owner', 'fresh-owner')}
-        monkeypatch.setattr(batch, '_queue', queue)
-        monkeypatch.setattr(batch, '_jobs', jobs)
-        monkeypatch.setattr(batch, '_processing_job_ids', set())
-        observed = []
-
-        async def pipeline(job_id, _job):
-            if job_id == 'fresh-owner':
-                observed.append(reports.inherited_grant())
-                reports.capture('engine_failed', stage='engine')
-                raise RuntimeError('controlled fresh job failure')
-
-        monkeypatch.setattr(batch, '_run_batch_pipeline', pipeline)
-        await queue.put('first-owner')
-        # The production long-lived worker inherits its creating request's
-        # context. Finishing that request must not pin all later jobs to it.
-        with reports.grant_scope(reports.observe_grant()):
-            worker = asyncio.create_task(batch._worker())
-        try:
-            await asyncio.wait_for(queue.join(), 2)
-            assert jobs['first-owner']['status'] == 'done'
-            if initial_owner == 'replaced':
-                reporter.consent(False)
-            reporter.consent(True)
-            fresh = reports.observe_grant()
-            await queue.put('fresh-owner')
-            await asyncio.wait_for(queue.join(), 2)
-            assert jobs['fresh-owner']['status'] == 'failed'
-            assert observed == [fresh]
-        finally:
-            worker.cancel()
-            await asyncio.gather(worker, return_exceptions=True)
-
-    asyncio.run(run())
-    reporter._tick()
-    assert {row['props']['category'] for row in reporter._files()} == {
-        'engine_failed', 'generation_failed',
-    }
-
-
-@pytest.mark.parametrize('choice',['unchanged','replacement','later_opt_in','fresh_asr'])
-def test_batch_empty_asr_result_uses_its_unit_grant_not_job_lifetime(reporter,monkeypatch,tmp_path,choice):
-    import subprocess
-    import threading
-    from types import SimpleNamespace
-    batch=importlib.import_module('api.routers.batch')
-    asr=importlib.import_module('services.asr_backend')
-    ffmpeg=importlib.import_module('services.ffmpeg_utils')
-    reporter.consent(choice not in ('later_opt_in','fresh_asr'))
-    monkeypatch.setattr(batch,'DATA_DIR',str(tmp_path))
-    monkeypatch.setattr(ffmpeg,'find_ffmpeg',lambda:'ffmpeg')
-    monkeypatch.setattr(ffmpeg,'validate_media_source',lambda *_:None)
-    monkeypatch.setattr(ffmpeg,'require_audio_stream',lambda *_:None)
-    async def run():
-        entered=asyncio.Event();release=threading.Event();loop=asyncio.get_running_loop()
-        result=loop.create_future()
-        def extract(*args,**kwargs):
-            if choice=='fresh_asr':
-                loop.call_soon_threadsafe(entered.set);assert release.wait(3)
-            return SimpleNamespace(stderr=b'Duration: 00:00:02.00',stdout=b'')
-        monkeypatch.setattr(subprocess,'run',extract)
-        async def transcribe(*args,**kwargs):
-            if choice=='fresh_asr':return [],'en'
-            entered.set();return await result
-        monkeypatch.setattr(asr,'run_transcribe_guarded',transcribe)
-        job={'status':'running','video_path':str(tmp_path/'fixture.mp4'),'langs':['en']}
-        task=asyncio.create_task(batch._run_batch_pipeline('isolated-asr-unit',job))
-        try:
-            await asyncio.wait_for(entered.wait(),2)
-            if choice!='fresh_asr':result.set_result(([],'en'))
-            if choice=='replacement':reporter.consent(False);reporter.consent(True)
-            elif choice in ('later_opt_in','fresh_asr'):reporter.consent(True)
-            release.set();await asyncio.wait_for(task,2)
-            assert job['status']=='failed'
-        finally:
-            release.set()
-            if not task.done():task.cancel();await asyncio.gather(task,return_exceptions=True)
-    asyncio.run(run());reporter._tick()
-    assert len(reporter._files())==int(choice in ('unchanged','fresh_asr'))
-
-
-@pytest.mark.parametrize('choice',['unchanged','replacement','later_opt_in'])
-def test_argos_worker_row_failure_keeps_submission_grant(reporter,monkeypatch,choice):
-    import threading
-    from concurrent.futures import ThreadPoolExecutor
-    from test_dub_translate import _install_fake_argos
-    argos=importlib.import_module('api.routers.dub_translate')
-    _install_fake_argos(monkeypatch)
-    reporter.consent(choice!='later_opt_in')
-    entered=threading.Event();release=threading.Event()
-    def translate(*args):
-        try:raise RuntimeError('already observed Argos row failure')
-        except RuntimeError:
-            entered.set();assert release.wait(3);raise
-    monkeypatch.setattr(importlib.import_module('argostranslate.translate'),'translate',translate)
-    with ThreadPoolExecutor(max_workers=1) as pool:
-        monkeypatch.setattr(argos,'_cpu_pool',pool)
-        async def run():
-            task=asyncio.create_task(argos.dub_translate(argos.TranslateRequest(
-                provider='argos',source_lang='en',target_lang='es',quality='fast',segments=[{'id':'fixture','text':'synthetic fixture'}])))
-            try:
-                assert await asyncio.to_thread(entered.wait,2)
-                if choice=='replacement':reporter.consent(False);reporter.consent(True)
-                elif choice=='later_opt_in':reporter.consent(True)
-                release.set();response=await asyncio.wait_for(task,2)
-                assert response['translated'][0]['error']
-            finally:
-                release.set()
-                if not task.done():task.cancel();await asyncio.gather(task,return_exceptions=True)
-        asyncio.run(run())
-    reporter._tick()
-    assert len(reporter._files())==int(choice=='unchanged')
 
 
 @pytest.mark.parametrize('choice',['unchanged','replacement','later_opt_in'])
@@ -527,41 +333,6 @@ def test_cancelled_task_late_exception_does_not_report_failure(reporter,monkeypa
     assert len(reporter._files())==int(not cancelled)
 
 
-@pytest.mark.parametrize('choice',['unchanged','replacement','later_opt_in','consent_during_operation'])
-def test_translation_outer_failure_keeps_awaited_unit_grant(reporter,monkeypatch,choice):
-    from test_dub_translate import _install_fake_argos
-    translation=importlib.import_module('api.routers.dub_translate')
-    _install_fake_argos(monkeypatch)
-    reporter.consent(choice not in ('later_opt_in','consent_during_operation'))
-    async def run():
-        entered=asyncio.Event();failure=asyncio.get_running_loop().create_future()
-        async def cinematic(*args,**kwargs):
-            if choice == 'consent_during_operation':
-                assert importlib.import_module('core.diagnostic_reports').observe_grant() is not None
-            entered.set();return await failure
-        monkeypatch.setattr(translation,'_maybe_cinematic',cinematic)
-        if choice=='consent_during_operation':
-            # Cinematic refinement is still part of the OFF-started
-            # translation operation, even if consent changes between units.
-            real_translate=importlib.import_module('argostranslate.translate').translate
-            def translate(*args):
-                reporter.consent(True)
-                return real_translate(*args)
-            monkeypatch.setattr(importlib.import_module('argostranslate.translate'),'translate',translate)
-        task=asyncio.create_task(translation.dub_translate(translation.TranslateRequest(
-            provider='argos',source_lang='en',target_lang='es',quality='fast',
-            segments=[{'id':'fixture','text':'synthetic fixture'}])))
-        try:
-            await asyncio.wait_for(entered.wait(),2)
-            failure.set_exception(RuntimeError('cinematic fault completed before consent transition'))
-            if choice=='replacement':reporter.consent(False);reporter.consent(True)
-            elif choice=='later_opt_in':reporter.consent(True)
-            response=await asyncio.wait_for(task,2)
-            assert response.status_code==500
-        finally:
-            if not task.done():task.cancel();await asyncio.gather(task,return_exceptions=True)
-    asyncio.run(run());reporter._tick()
-    assert len(reporter._files())==int(choice=='unchanged')
 
 
 @pytest.mark.parametrize('initially_enabled', [False, True])
@@ -632,19 +403,6 @@ def test_openai_upload_keeps_request_owner_for_nested_asr(reporter, monkeypatch,
     asyncio.run(run())
     assert calls == ['upload_changed_consent', 'guarded_asr']
     assert reporter.intake.empty()
-
-
-from test_dub_crash_resume import dub  # noqa: E402,F401
-
-
-@pytest.mark.parametrize('cancelled', [False, True])
-def test_actual_dub_native_exception_after_cancel_stays_local(reporter, dub, cancelled):
-    reporter.consent(True)
-    dub.state['fail_on_call'] = 1
-    dub.state['cancel_after'] = 1 if cancelled else None
-    assert any(event['type'] == 'error' for event in dub.run())
-    reporter._tick()
-    assert len(reporter._files()) == int(not cancelled)
 
 
 @pytest.mark.parametrize("code", ["dub_source_changed", "dub_timing_overflow", "UNKNOWN", "NETWORK_ERROR", ["dub_source_changed"], {"code": "dub_source_changed"}])

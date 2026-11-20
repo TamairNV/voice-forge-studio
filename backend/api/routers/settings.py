@@ -144,8 +144,7 @@ def set_performance_profile(body: _PerformanceProfileBody):
     if family is not None and family not in applicable:
         raise HTTPException(status_code=409, detail="The selected engines do not support this performance preset")
     from core import job_store
-    from api.routers.batch import list_batch_jobs
-    if job_store.list_jobs(status="active", limit=1) or list_batch_jobs(status="active", limit=1):
+    if job_store.list_jobs(status="active", limit=1):
         raise HTTPException(status_code=409, detail="Wait for queued or running jobs to finish before changing performance presets")
     try:
         if family is None:
@@ -243,50 +242,6 @@ def set_offload_after_generation(body: _OffloadAfterGenerationBody):
         logger.exception("set_offload_after_generation failed")
         raise HTTPException(status_code=500, detail="Failed to persist setting")
     return _offload_after_generation_state()
-
-
-# ── OmniVoice GGUF resident server (#3654) ────────────────────────────────
-
-
-class _GgufResidentBody(BaseModel):
-    enabled: bool = Field(..., description="True to keep the GGUF runtime loaded between requests")
-
-
-def _gguf_resident_state() -> dict:
-    """`enabled` is the effective value (env > saved > off; opt-in
-    because upstream tts-server has no API key). `available` means a
-    verified tts-server binary is bundled; without one every request spawns the
-    CLI and the toggle has nothing to switch."""
-    from engines.omnivoice_gguf import resident
-
-    return {
-        "enabled": resident.resident_enabled(),
-        "env_pinned": bool(os.environ.get(resident.RESIDENT_ENV)),
-        "available": resident.server_status()[0],
-    }
-
-
-# Verifying the server binary hashes it, so refuse cross-site loads.
-@router.get("/perf/gguf-resident", dependencies=[Depends(reject_cross_site_get)])
-def get_gguf_resident():
-    """Whether the OmniVoice GGUF runtime stays loaded between requests."""
-    return _gguf_resident_state()
-
-
-@router.put("/perf/gguf-resident")
-def set_gguf_resident(body: _GgufResidentBody):
-    """Persist the toggle. Turning it off stops a running server at once."""
-    from core import prefs
-    from engines.omnivoice_gguf import resident
-
-    try:
-        prefs.set_(resident.RESIDENT_PREF, bool(body.enabled))
-    except Exception:
-        logger.exception("set_gguf_resident failed")
-        raise HTTPException(status_code=500, detail="Failed to persist setting")
-    if not resident.resident_enabled():
-        resident.stop_all()
-    return _gguf_resident_state()
 
 
 # ── Pause fill: digital silence or room tone (#3611) ──────────────────────
@@ -1662,57 +1617,6 @@ def get_db_backup_state():
         "count": len(db_backup.list_backups(DB_PATH)),
         "keep": db_backup.KEEP_BACKUPS,
     }
-
-
-# ── Opt-in product analytics (hardened; default OFF) ───────────────────────
-# Local-first means silence is not consent: analytics runs only when the user
-# explicitly turns it on AND the build ships a destination token. See
-# core/analytics.py for the three rules (opt-in, no exception autocapture,
-# allowlisted metadata only).
-
-class _AnalyticsBody(BaseModel):
-    enabled: bool = Field(..., description="User's explicit choice. Default is OFF.")
-
-
-@router.get("/analytics")
-def get_analytics():
-    from core import analytics
-
-    return {
-        "enabled": analytics.enabled(),
-        "opted_in": analytics.user_opted_in(),
-        # True for source builds too since #1193 (in-repo default token; env/baked
-        # overrides). False only for a destination-less build, where the UI can
-        # say so instead of offering a toggle that does nothing.
-        "available": analytics.token_configured(),
-        # Whether the user has ever been explicitly asked (first-run consent step
-        # or the one-time banner). The UI uses this to ask exactly once — it never
-        # enables anything by itself.
-        "prompted": analytics.user_prompted(),
-    }
-
-
-class _UiEventBody(BaseModel):
-    event: str = Field(..., max_length=64)
-    props: dict = Field(default_factory=dict)
-    screen: str | None = Field(default=None, max_length=96)
-
-
-@router.post("/analytics/event")
-def post_analytics_event(body: _UiEventBody):
-    """An event the interface reports. A no-op unless the user opted in; only
-    allowlisted, content-free properties are forwarded."""
-    from core import analytics
-
-    return {"sent": analytics.capture_from_ui(body.event, body.props, body.screen)}
-
-
-@router.put("/analytics")
-def set_analytics(body: _AnalyticsBody):
-    from core import analytics
-
-    analytics.set_opted_in(body.enabled)
-    return get_analytics()
 
 
 class _DiagnosticsBody(BaseModel):

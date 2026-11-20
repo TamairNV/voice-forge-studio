@@ -104,34 +104,7 @@ def test_funasr_reports_whole_audio_need_per_env(monkeypatch, env_value, flag):
     assert FunASRBackend().requires_full_audio_for_speaker_consistency is flag
 
 
-def test_speaker_backend_receives_entire_file_once(monkeypatch, tmp_path):
-    rec = _Recorder(full_audio_needed=True)
-    body, guarded = _run(monkeypatch, tmp_path, rec, 71)
-    assert len(rec.seen_seconds) == 1
-    assert rec.seen_seconds[0] == pytest.approx(71.0, abs=0.1)
-    assert [g["what"] for g in guarded] == ["Dub chunk 1/1"]
-    assert guarded[0]["timeout"] == 777.5
-    assert guarded[0]["timeout_env"] == "OMNIVOICE_ASR_TRANSCRIBE_TIMEOUT_S"
-    ev = _start_payload(body)
-    assert ev["chunks"] == 1
-    assert ev["chunk_s"] == pytest.approx(71.0, abs=0.1)
 
 
-def test_regular_backend_still_sliced_into_windows(monkeypatch, tmp_path):
-    rec = _Recorder(full_audio_needed=False)
-    body, guarded = _run(monkeypatch, tmp_path, rec, 71)
-    assert [round(x) for x in rec.seen_seconds] == [30, 30, 11]
-    assert len(guarded) == 3
-    assert {(g["timeout"], g["timeout_env"]) for g in guarded} == {
-        (44.25, "OMNIVOICE_TRANSCRIBE_CHUNK_TIMEOUT_S")
-    }
-    ev = _start_payload(body)
-    assert ev["chunks"] == 3
-    assert ev["chunk_s"] == pytest.approx(30.0)
 
 
-def test_whole_recording_stream_scales_past_its_fixed_floor(monkeypatch, tmp_path):
-    rec = _Recorder(full_audio_needed=True)
-    _, guarded = _run(monkeypatch, tmp_path, rec, 400)
-    assert len(guarded) == 1
-    assert guarded[0]["timeout"] == 800

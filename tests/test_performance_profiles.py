@@ -248,13 +248,10 @@ def test_initial_visible_balanced_profile_is_reconciled(monkeypatch):
 
 
 def test_tiered_tts_engines_are_registered_omnivoice_runtimes():
-    """The tier gate must name engine ids the registry can actually activate;
-    a stale id there silently ignored the speed/quality tier for the sidecar."""
     from services import tts_backend
 
-    assert profiles.TIERED_TTS_ENGINES == {"omnivoice", "omnivoice-subprocess"}
-    for engine in profiles.TIERED_TTS_ENGINES:
-        assert engine in tts_backend._REGISTRY
+    assert "omnivoice" in profiles.TIERED_TTS_ENGINES
+    assert "omnivoice" in tts_backend._REGISTRY
 
 
 def test_tier_applies_to_the_omnivoice_sidecar(monkeypatch):
@@ -290,8 +287,9 @@ def metal_host(monkeypatch):
     return models
 
 
-def test_metal_whisper_is_the_installed_model_the_mlx_backend_loads(metal_host):
-    assert _installed_mlx_whisper_model()["repo_id"] == "mlx-community/whisper-large-v3-mlx"
+def test_metal_whisper_is_the_installed_model_the_mlx_backend_loads(metal_host, monkeypatch):
+    monkeypatch.setenv("ASR_MODEL", "mlx-community/whisper-large-v3-turbo")
+    assert _installed_mlx_whisper_model()["repo_id"] == "mlx-community/whisper-large-v3-turbo"
 
 
 def test_metal_whisper_needs_a_metal_host(metal_host, monkeypatch):

@@ -99,7 +99,7 @@ installing the newer `.deb`. Source checkouts do not self-update.
 
 The archived Tauri app keeps its frozen, signed `latest.json` feeds at
 immutable URLs; they never offer Electron installers. Move to Electron with the
-[migration guide](electron-migration.md).
+migration guide.
 
 ## Your data during updates
 

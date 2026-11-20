@@ -178,17 +178,6 @@ def test_sherpa_dictation_commercial_sibling_is_not_blocked(store, no_sherpa_bui
     assert ab.get_sherpa_dictation_backend(COMMERCIAL_SHERPA).model_id == COMMERCIAL_SHERPA
 
 
-def test_live_dictation_preflight_returns_typed_detail(store, monkeypatch):
-    from api.routers import capture_ws
-    from services import sherpa_dictation
-
-    monkeypatch.setattr(ab.SherpaDictationBackend, "is_available", classmethod(lambda cls: (True, "")))
-    detail = capture_ws._dictation_licence_error(sherpa_dictation.get_spec(GATED_SHERPA))
-    assert detail["code"] == "model_licence_required"
-    assert detail["models"][0]["repo_id"] == "csukuangfj/sherpa-onnx-whisper-tiny"
-    assert capture_ws._dictation_licence_error(sherpa_dictation.get_spec(COMMERCIAL_SHERPA)) is None
-
-
 # ── Reference transcription (voice cloning) ─────────────────────────────────
 
 def test_reference_transcription_skips_unaccepted_candidate(store, monkeypatch):
@@ -294,9 +283,7 @@ def test_nllb_is_gated_in_the_registry(store):
 
 
 @pytest.mark.parametrize("rel", [
-    "api/routers/dub_export.py",
     "api/routers/capture.py",
-    "api/routers/batch.py",
 ])
 def test_routers_surface_the_typed_licence_error(rel):
     tree = ast.parse(_source(rel))

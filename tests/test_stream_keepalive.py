@@ -116,31 +116,3 @@ def test_cancelled_consumer_finalizes_blocked_source():
         await asyncio.wait_for(finalized.wait(), 0.5)
 
     asyncio.run(cancel_consumer())
-
-
-def test_longform_render_response_keeps_silent_sse_alive(monkeypatch):
-    from api.routers import audiobook
-
-    started = "data: {\"type\": \"started\"}\n\n"
-    finished = "data: {\"type\": \"done\"}\n\n"
-
-    async def fake_render(*_args, **_kwargs):
-        yield started
-        await asyncio.sleep(0.035)
-        yield finished
-
-    monkeypatch.setattr(audiobook, "_ensure_active_engine_licence", lambda: None)
-    monkeypatch.setattr(audiobook, "_public_longform_stream", fake_render)
-    monkeypatch.setattr(stream_keepalive, "SILENCE_INTERVAL_SECONDS", 0.01)
-
-    async def render():
-        response = await audiobook.longform_render(
-            audiobook.LongformRenderRequest()
-        )
-        body = "".join([frame async for frame in response.body_iterator])
-        return response, body
-
-    response, body = asyncio.run(render())
-    assert response.headers["x-accel-buffering"] == "no"
-    assert SSE_KEEPALIVE in body
-    assert body.replace(SSE_KEEPALIVE, "") == started + finished

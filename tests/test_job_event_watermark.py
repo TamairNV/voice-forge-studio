@@ -12,7 +12,7 @@ def events_client(tmp_path, monkeypatch):
     job_store = importlib.import_module("core.job_store")
     monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "events.db"))
     db.init_db()
-    from api.routers.dub_export import router
+    from api.routers.jobs import router
     app = FastAPI()
     app.include_router(router)
     client = TestClient(app)

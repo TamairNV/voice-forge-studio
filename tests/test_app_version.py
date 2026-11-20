@@ -53,19 +53,6 @@ def test_all_version_files_in_lockstep():
     assert not drifted, f"version mirrors drifted from package.json={canonical!r}: {drifted}"
 
 
-def test_release_policy_requires_owner_approved_manual_bumps():
-    """The maintained mirrors follow an owner-approved bump, never an automatic one."""
-    from pathlib import Path
-
-    root = Path(__file__).resolve().parents[1]
-    constitution = (root / "CLAUDE.md").read_text(encoding="utf-8")
-    release_guide = (root / "docs/RELEASING.md").read_text(encoding="utf-8")
-
-    assert "main is always **latest release + 1 patch**" not in constitution
-    assert "Version bumps are manual and happen only when the owner asks" in constitution
-    assert "Version bumps are manual and require owner approval" in release_guide
-
-
 def test_fallback_version_resolves_to_pyproject():
     """When package metadata is unavailable (frozen build / raw checkout), the
     version must still resolve to pyproject — never the stale literal that made
@@ -80,12 +67,3 @@ def test_fallback_version_resolves_to_pyproject():
         (root / "pyproject.toml").read_text(encoding="utf-8"),
     ).group(1)
     assert _fallback_version() == pyproject
-
-
-def test_ios_app_reads_the_full_version():
-    # CFBundleShortVersionString is X.Y.Z only; About and licence receipts must show
-    # the root version like Android's versionName (AppVersion.full).
-    from pathlib import Path
-    sources = (Path(__file__).resolve().parents[1] / "mobile/ios/VoiceStudio").rglob("*.swift")
-    offenders = [p.name for p in sources if "CFBundleShortVersionString" in p.read_text(encoding="utf-8")]
-    assert not offenders

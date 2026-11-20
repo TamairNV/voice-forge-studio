@@ -132,8 +132,8 @@ def test_list_backends_resilient(registry_sandbox, caplog):
 
     # And every production backend still appears.
     expected = {
-        "omnivoice", "cosyvoice", "kittentts", "mlx-audio", "voxcpm2",
-        "moss-tts-nano", "indextts2", "gpt-sovits", "sherpa-onnx",
+        "cosyvoice", "mlx-audio", "voxcpm2",
+        "indextts2", "gpt-sovits",
     }
     assert expected.issubset(by_id.keys()), (
         f"missing: {expected - by_id.keys()}"
@@ -248,7 +248,7 @@ def test_mlx_audio_curated_models_roster(registry_sandbox):
     always silently defaulting to Kokoro."""
     out = {entry["id"]: entry for entry in list_backends()}
     entry = out["mlx-audio"]
-    assert entry["active_model_id"] == "kokoro"  # DEFAULT_MODEL_KEY, no prefs set
+    assert entry["active_model_id"] == "voxcpm2"  # DEFAULT_MODEL_KEY, no prefs set
     keys = {m["key"] for m in entry["curated_models"]}
     assert keys == set(tts_backend.MLXAudioBackend.CURATED_MODELS)
     for m in entry["curated_models"]:
@@ -261,9 +261,9 @@ def test_mlx_audio_active_model_id_reflects_prefs(registry_sandbox, monkeypatch,
     from core import prefs as _prefs
     monkeypatch.setattr(_prefs, "_PREFS_PATH", str(tmp_path / "prefs.json"))
     monkeypatch.delenv("OMNIVOICE_MLX_AUDIO_MODEL", raising=False)
-    _prefs.set_("mlx_audio_model_id", "outetts")
+    _prefs.set_("mlx_audio_model_id", "csm")
     out = {entry["id"]: entry for entry in list_backends()}
-    assert out["mlx-audio"]["active_model_id"] == "outetts"
+    assert out["mlx-audio"]["active_model_id"] == "csm"
 
 
 def test_curated_models_not_present_on_other_backends(registry_sandbox):
@@ -282,7 +282,7 @@ def test_isolation_mode_in_process_vs_subprocess(registry_sandbox):
     from core.device_caps import detect_host_caps
     registry_sandbox["fake-sub"] = FakeSubBackend
     registry_sandbox["healthy-inproc"] = HealthyInProcessBackend
-    out = {entry["id"]: entry for entry in list_backends()}
+    out = {entry["id"]: entry for entry in list_backends(include_hidden=True)}
 
     assert out["fake-sub"]["isolation_mode"] == "subprocess"
     assert out["healthy-inproc"]["isolation_mode"] == "in-process"
@@ -342,25 +342,24 @@ def test_last_error_cleared_after_recovery(registry_sandbox):
 
 
 def test_existing_engines_still_listed():
-    """Sanity: the wrap must not silently drop entries. We expect all nine
-    in-tree engines unchanged."""
+    """Sanity: the wrap must not silently drop entries."""
     out = list_backends()
     ids = {entry["id"] for entry in out}
     expected = {
-        "omnivoice", "cosyvoice", "kittentts", "mlx-audio", "voxcpm2",
-        "moss-tts-nano", "indextts2", "gpt-sovits", "sherpa-onnx",
+        "cosyvoice", "mlx-audio", "voxcpm2",
+        "indextts2", "gpt-sovits",
     }
     assert expected.issubset(ids), f"missing entries: {expected - ids}"
-    assert len(out) >= 9
+    assert len(out) >= 5
 
 
 def test_install_hint_preserved():
     """install_hint passthrough — Phase 1's tooltips must still render."""
     out = {entry["id"]: entry for entry in list_backends()}
-    assert "kittentts" in out
+    assert "voxcpm2" in out
     # The pre-existing _INSTALL_HINTS dict carries this one.
-    assert out["kittentts"]["install_hint"] is not None
-    assert "kittentts" in out["kittentts"]["install_hint"].lower()
+    assert out["voxcpm2"]["install_hint"] is not None
+    assert "voxcpm" in out["voxcpm2"]["install_hint"].lower()
 
 
 # ── `hint` — available-but-has-advice (the "ready — <advice>" convention) ──
@@ -430,7 +429,7 @@ def test_supports_cloning_true_false_and_model_dependent(registry_sandbox):
 
     registry_sandbox["no-clone"] = NoCloneBackend
     registry_sandbox["healthy-inproc"] = HealthyInProcessBackend
-    out = {e["id"]: e for e in list_backends()}
+    out = {e["id"]: e for e in list_backends(include_hidden=True)}
 
     # Plain bool class attrs pass through…
     assert out["no-clone"]["supports_cloning"] is False

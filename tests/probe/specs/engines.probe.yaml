@@ -10,10 +10,11 @@ judge:
   checks:
     - engines_present: { payload: $.engines_tts, min_count: 1 }
     - engines_present: { payload: $.engines_asr, min_count: 1 }
-    # The default engine must actually be usable out of the box.
-    - active_engine_available: { payload: $.engines_tts }
+    # The default ASR engine must actually be usable out of the box.
     - active_engine_available: { payload: $.engines_asr }
     # Every unavailable engine must tell the user how to install it.
     - unavailable_engines_explained: { payload: $.engines_tts }
     - unavailable_engines_explained: { payload: $.engines_asr }
-advisory: []
+advisory:
+  # Default TTS (voxcpm2 / mlx-audio) is an optional install not bundled in base CI.
+  - active_engine_available: { payload: $.engines_tts }

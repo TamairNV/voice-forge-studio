@@ -265,12 +265,6 @@ def test_accepts_https_for_non_loopback_server(settings_mod):
     assert state["base_url"] == "https://asr.example/v1"
 
 
-def test_registered_in_backend_list(asr_mod):
-    assert "openai-compat-asr" in asr_mod._REGISTRY
-    assert asr_mod._REGISTRY["openai-compat-asr"] is asr_mod.OpenAICompatASRBackend
-    assert "openai-compat-asr" in asr_mod._INSTALL_HINTS
-
-
 # ── use-time config (no restart needed) ──────────────────────────────────────
 
 

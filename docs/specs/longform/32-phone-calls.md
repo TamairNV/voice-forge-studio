@@ -2,7 +2,7 @@
 
 > **Historical design reference.** Paths, status and instructions below describe
 > the original implementation snapshot. For current behavior see the
-> [calls guide](../../calls.md); follow current repository rules for new changes.
+> calls guide; follow current repository rules for new changes.
 
 ## TL;DR
 

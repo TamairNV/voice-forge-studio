@@ -84,7 +84,7 @@ def _mutating_route_functions(
 
 @pytest.mark.parametrize(
     "filename",
-    ["mcp_bindings.py", "media_tools.py", "pronunciation.py", "telephony_twilio.py", "settings.py", "system.py"],
+    ["mcp_bindings.py", "media_tools.py", "pronunciation.py", "settings.py", "system.py"],
 )
 def test_privileged_router_uses_method_aware_admin_guard(filename):
     dependencies = _dependency_names(_router_assignment(_tree(filename)))
@@ -92,38 +92,7 @@ def test_privileged_router_uses_method_aware_admin_guard(filename):
     assert "require_loopback" not in dependencies
 
 
-def test_gallery_router_uses_consumer_for_reads():
-    """Gallery reads stay reachable for PIN/trusted-network consumers; only
-    mutations escalate to require_admin (the router-level dependency is
-    require_consumer, not require_admin)."""
-    dependencies = _dependency_names(_router_assignment(_tree("gallery.py")))
-    assert "require_consumer" in dependencies
-    assert "require_admin" not in dependencies
-    assert "require_loopback" not in dependencies
-
-
-@pytest.mark.parametrize(
-    "function_name",
-    [
-        "delete_voice",
-        "search_youtube",
-        "download_youtube_clip",
-        "upload_voice_clip",
-        "save_voice_as_profile",
-        "update_voice",
-        "batch_delete_voices",
-        "voice_to_profile",
-    ],
-)
-def test_gallery_mutating_routes_require_admin(function_name):
-    dependencies = _dependency_names(
-        _route_decorators(_tree("gallery.py"), function_name)
-    )
-    assert "require_admin" in dependencies, function_name
-    assert "require_loopback" not in dependencies, function_name
-
-
-@pytest.mark.parametrize("filename", ['audiobook.py', 'batch.py', 'capture.py', 'describe_voice.py', 'dub_generate.py', 'dub_translate.py', 'glossary.py', 'marketplace.py', 'personas.py', 'profiles.py', 'project_bundles.py', 'projects.py', 'stories.py', 'voice_convert.py', 'watermark.py'])
+@pytest.mark.parametrize("filename", ['capture.py', 'describe_voice.py', 'personas.py', 'profiles.py', 'projects.py', 'voice_convert.py', 'watermark.py'])
 def test_content_router_keeps_consumer_reads_and_admin_writes(filename):
     dependencies = _dependency_names(_router_assignment(_tree(filename)))
     assert "require_consumer_reads_admin_writes" in dependencies
@@ -132,18 +101,9 @@ def test_content_router_keeps_consumer_reads_and_admin_writes(filename):
 
 # (router file, function) pairs a paired phone / consumer calls to run work.
 _CONSUMER_GENERATION_ROUTES = [
-    ("dub_translate.py", "dub_translate"),
-    ("dub_translate.py", "dub_agent_fit"),
-    ("dub_generate.py", "dub_generate"),
-    ("dub_generate.py", "preview_segment"),
-    ("batch.py", "enqueue_batch_job"),
-    ("batch.py", "cancel_batch_job"),
-    ("batch.py", "retry_batch_job"),
     ("voice_convert.py", "convert_speech"),
     ("capture.py", "transcribe_audio"),
     ("describe_voice.py", "describe_voice"),
-    ("audiobook.py", "audiobook_synthesize"),
-    ("audiobook.py", "longform_render"),
     ("profiles.py", "create_profile"),
 ]
 # Editing / deleting stored content stays admin-only.
@@ -151,12 +111,8 @@ _ADMIN_ONLY_ROUTES = [
     ("profiles.py", "update_profile"),
     ("profiles.py", "delete_profile"),
     ("profiles.py", "replace_profile_audio"),
-    ("batch.py", "delete_batch_job"),
     ("projects.py", "create_project"),
     ("projects.py", "delete_project"),
-    ("glossary.py", "delete_term"),
-    ("marketplace.py", "remove_from_marketplace"),
-    ("project_bundles.py", "import_project_bundle"),
     ("personas.py", "import_persona"),
     ("watermark.py", "update_watermark_settings"),
 ]
@@ -287,13 +243,6 @@ def test_side_effectful_get_requires_strict_admin_action(filename, function_name
     assert "require_admin_action" in dependencies
 
 
-def test_calls_pairing_exception_does_not_expose_settings():
-    tree = _tree("calls.py")
-    assert "require_call_control" in _dependency_names(_router_assignment(tree))
-    for function in ("get_settings", "put_settings"):
-        assert "require_admin" in _dependency_names(_route_decorators(tree, function))
-
-
 # Destructive/privileged routes a route census found still at tier T-NONE.
 # Editing/deleting stored content and starting host-side work is admin-only;
 # POST /generate stays on the documented consumer surface so a PIN-paired
@@ -303,12 +252,6 @@ _REMAINING_MUTATING_ROUTE_TIERS = [
     ("generation.py", "delete_single_history", "require_admin"),
     ("generation.py", "set_history_starred", "require_admin"),
     ("generation.py", "generate_speech", "require_consumer"),
-    ("dub_core.py", "clear_dub_history", "require_admin"),
-    ("dub_core.py", "delete_single_dub_history", "require_admin"),
-    ("dub_core.py", "dub_import_srt", "require_admin"),
-    ("dub_core.py", "dub_sync_transcript", "require_admin"),
-    ("dub_core.py", "dub_cleanup_segments", "require_admin"),
-    ("dub_core.py", "dub_use_downloaded_captions", "require_admin"),
     ("model_licenses.py", "prepare_model_install", "require_consumer"),
     ("model_licenses.py", "commit_model_install", "require_consumer"),
     ("model_licenses.py", "verify_model_install", "require_admin"),
@@ -316,12 +259,10 @@ _REMAINING_MUTATING_ROUTE_TIERS = [
     ("archetypes.py", "set_preview_gallery", "require_admin"),
     ("archetypes.py", "check_preview_gallery", "require_admin"),
     ("archetypes.py", "use_archetype", "require_admin"),
-    ("community.py", "community_use", "require_admin"),
     ("setup/wizard.py", "setup_warmup", "require_consumer"),
     ("tools.py", "parse_direction", "require_admin"),
     ("tools.py", "rate_fit", "require_admin"),
     ("tools.py", "normalize_workflow_speech", "require_admin"),
-    ("tools.py", "analyse_video_context", "require_admin"),
 ]
 
 
@@ -330,26 +271,6 @@ def test_remaining_mutating_routes_are_tiered(filename, function_name, dependenc
     dependencies = _dependency_names(_route_decorators(_tree(filename), function_name))
     assert dependency in dependencies, f"{filename}:{function_name}"
     assert "require_loopback" not in dependencies, f"{filename}:{function_name}"
-
-
-def test_sonitranslate_install_routes_stay_desktop_only():
-    """SoniTranslate's install/start/stop are managed-sidecar operations: the
-    installer clones mutable upstream source and pip-installs it, and start()
-    spawns that checkout with HF_TOKEN in the child env.  They carry the same
-    admin + desktop gate as /engines/sidecar/{engine_id}/install; the dub route
-    stays a plain native-access consumer route."""
-    tree = _tree("sonitranslate.py")
-    for function_name in (
-        "sonitranslate_install",
-        "sonitranslate_start",
-        "sonitranslate_stop",
-    ):
-        dependencies = _dependency_names(_route_decorators(tree, function_name))
-        assert {"require_admin", "require_desktop"} <= dependencies, function_name
-        assert "require_loopback" not in dependencies, function_name
-    assert "require_native_access" in _dependency_names(
-        _route_decorators(tree, "sonitranslate_dub")
-    )
 
 
 def test_model_lifecycle_routes_are_gated():

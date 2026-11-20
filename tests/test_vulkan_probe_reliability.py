@@ -122,30 +122,6 @@ def test_duplicate_inventory_names_do_not_guess_memory(monkeypatch):
         auto.detect_vulkan_profile.cache_clear()
 
 
-@pytest.mark.parametrize("present", [False, True])
-def test_windows_native_build_requires_vulkan_payload(tmp_path, present):
-    """Reject missing modules with the intended diagnostic and accept a DLL."""
-    root = Path(__file__).resolve().parents[1]
-    workflow = yaml.safe_load((root / ".github/workflows/build-omnivoice-tts.yml").read_text(encoding="utf-8"))
-    steps = workflow["jobs"]["build-omnivoice-tts"]["steps"]
-    gate = next(step for step in steps if step.get("name") == "Check the Vulkan GPU module was built")
-    git_bash = Path(os.environ.get("ProgramFiles", "")) / "Git/bin/bash.exe"
-    bash = str(git_bash) if git_bash.is_file() else shutil.which("bash")
-    if bash is None:
-        pytest.skip("Bash required for the existing native-build workflow")
-    (tmp_path / "bin").mkdir()
-    if present:
-        (tmp_path / "bin" / "ggml-vulkan.dll").write_bytes(b"MZ")
-    result = subprocess.run([bash, "-c", gate["run"]], cwd=tmp_path,
-                            env={**os.environ, "PLATFORM": "windows-x86_64"},
-                            capture_output=True, text=True, timeout=15, check=False)
-    output = result.stdout + result.stderr
-    assert result.returncode == 0 if present else result.returncode != 0, output
-    expected = "Vulkan module:" if present else "::error::windows-x86_64 built without the ggml-vulkan module"
-    assert expected in output
-
-
-
 def test_physical_ram_probe_preserves_shared_memory_budget(monkeypatch):
     """Read physical RAM in GiB so integrated GPUs retain shared-memory sizing."""
     import psutil

@@ -132,29 +132,6 @@ def test_amd_states_keep_their_options():
     assert "kernels_missing_legacy" in gr.UNUSABLE_GPU_STATES
 
 
-@pytest.mark.parametrize("locale", sorted(f[:-5] for f in os.listdir(LOCALES_DIR) if f.endswith(".json")))
-def test_every_locale_has_the_legacy_strings(locale):
-    with open(os.path.join(LOCALES_DIR, f"{locale}.json"), encoding="utf-8") as fh:
-        settings = json.load(fh)["settings"]
-    state = settings["gpu_report_state_kernels_missing_legacy"]
-    assert set(_PLACEHOLDER.findall(state)) == {"gpu", "torch"}
-    option = settings["gpu_report_option_vulkan_engines_any"]
-    assert set(_PLACEHOLDER.findall(option)) == {"vulkan_engines"}
-    # Neutral: the NVIDIA option must not be the AMD Radeon text.
-    assert option != settings["gpu_report_option_vulkan_engines"]
-
-
-def test_backend_notification_levels_are_accepted_by_the_renderer():
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    with open(os.path.join(root, "electron", "src", "renderer", "src", "components",
-                           "app-shell", "system-notifications.tsx"), encoding="utf-8") as fh:
-        union = re.search(r"level: ((?:'\w+'\s*\|?\s*)+);", fh.read()).group(1)
-    accepted = set(re.findall(r"'(\w+)'", union))
-    with open(os.path.join(root, "backend", "api", "routers", "system.py"), encoding="utf-8") as fh:
-        emitted = set(re.findall(r'"level": "(\w+)"', fh.read()))
-    assert emitted <= accepted, f"backend emits unknown notification levels: {emitted - accepted}"
-
-
 def test_legacy_advice_promises_cuda_126_only_where_setup_will_select_it(monkeypatch):
     dc = _m("core.device_caps")
     monkeypatch.setattr(dc, "legacy_cuda_repair_eligible", lambda: True)

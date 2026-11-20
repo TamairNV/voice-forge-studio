@@ -244,11 +244,16 @@ def _resolve_voice_profile(voice: str):
 SpeechFormat = Literal["mp3", "opus", "aac", "flac", "wav", "pcm"]
 
 
+def _default_speech_model() -> str:
+    from services.tts_backend import default_tts_backend_id
+    return default_tts_backend_id()
+
+
 class SpeechRequest(BaseModel):
     """POST /v1/audio/speech — mirrors OpenAI's CreateSpeechRequest."""
 
     model: str = Field(
-        default="omnivoice",
+        default_factory=_default_speech_model,
         description=(
             "TTS model to use. Maps to VoiceStudio engine IDs: "
             "'omnivoice', 'voxcpm2', 'cosyvoice', 'mlx-audio', 'kittentts', 'moss-tts-nano'. "

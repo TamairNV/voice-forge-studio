@@ -96,7 +96,7 @@ def test_no_render_path_advances_or_drops_the_take_seed():
     from pathlib import Path
 
     routers = Path(__file__).resolve().parents[1] / "backend" / "api" / "routers"
-    for name in ("generation.py", "batch.py", "dub_generate.py"):
+    for name in ("generation.py",):
         source = (routers / name).read_text(encoding="utf-8")
         assert not re.search(r"seed[\"'\]]*\s*\+\s*(i|chunk_index|idx)\b", source), name
         assert "seed_engine_call(" in source, name

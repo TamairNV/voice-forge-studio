@@ -316,7 +316,6 @@ def test_only_sidecars_with_a_separate_interpreter_get_their_own_build(
     ("engines.omnivoice_subprocess", "OmniVoiceSubprocessBackend", None),
     ("services.subprocess_asr", "IsolatedFasterWhisperBackend", None),
     ("engines.pockettts", "PocketTTSBackend", "OMNIVOICE_POCKETTTS_DIR"),
-    ("engines.supertonic3.backend", "Supertonic3Backend", "OMNIVOICE_SUPERTONIC3_DIR"),
 ])
 def test_shares_parent_torch_agrees_with_venv_python(module, cls_name, env_var, monkeypatch):
     """The cheap answer the GPU report reads must match the interpreter the
@@ -422,23 +421,3 @@ def test_a_host_with_no_mismatched_kernels_keeps_its_vendor_verdict(
     code, params = gpu_report.classify_host(caps, (rtx4070,), CPU_BUILD)
     assert code == "nvidia_cpu_build"
     assert params["gpu"] == "NVIDIA GeForce RTX 4070"
-
-
-@pytest.mark.parametrize(
-    "locale",
-    sorted(f[:-5] for f in os.listdir(LOCALES_DIR) if f.endswith(".json")),
-)
-def test_every_locale_says_what_the_state_means(locale):
-    """The user-facing strings exist in every locale and keep the
-    placeholders the state text interpolates."""
-    with open(os.path.join(LOCALES_DIR, f"{locale}.json"), encoding="utf-8") as fh:
-        settings = json.load(fh)["settings"]
-
-    state = settings.get("gpu_report_state_kernels_missing")
-    assert state, f"{locale}.json lacks settings.gpu_report_state_kernels_missing"
-    assert set(_PLACEHOLDER.findall(state)) == {"gpu", "torch"}
-
-    option = settings.get("gpu_report_option_install_matching_torch")
-    assert option, f"{locale}.json lacks settings.gpu_report_option_install_matching_torch"
-    # A remedy of its own - not the driver update this bug used to send people to.
-    assert option != settings.get("gpu_report_option_update_nvidia_driver")

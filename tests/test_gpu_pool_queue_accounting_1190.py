@@ -266,8 +266,7 @@ def test_watermark_dispatches_leave_the_gpu_pool():
     """#1169 put an AudioSeal embed (CPU work, no VRAM) on the GPU pool for
     every producer including per-chunk stream previews; on a 1-worker host each
     one serialized ahead of the next generate."""
-    for rel in ("api/routers/generation.py", "api/routers/batch.py",
-                "api/routers/archetypes.py"):
+    for rel in ("api/routers/generation.py", "api/routers/archetypes.py"):
         src = (_BACKEND / rel).read_text(encoding="utf-8")
         for idx in range(len(src)):
             if not src.startswith("run_in_executor(", idx):
@@ -413,17 +412,3 @@ def test_speech_timeout_is_a_retryable_503_not_a_500(mm, client, monkeypatch):
     assert res.status_code == 503, res.text
     assert res.headers["X-OmniVoice-Retryable"] == "true"
     assert int(res.headers["Retry-After"]) >= 1
-
-
-def test_batch_surfaces_a_timed_out_segment_instead_of_a_silent_gap():
-    """batch.py used to swallow a timed-out segment into a silent stretch of
-    the dubbed track: a finished-looking video with missing speech."""
-    src = (_BACKEND / "api/routers/batch.py").read_text(encoding="utf-8")
-    tree = ast.parse(src)
-    handlers = [h for node in ast.walk(tree) if isinstance(node, ast.Try)
-                for h in node.handlers
-                if isinstance(h.type, ast.Name) and h.type.id == "TimeoutError"]
-    assert handlers, "batch.py has no TimeoutError handler — timeouts are still swallowed"
-    assert any(isinstance(n, ast.Raise) for h in handlers for n in ast.walk(h)), (
-        "batch.py catches TimeoutError but does not surface it"
-    )

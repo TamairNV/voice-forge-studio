@@ -24,29 +24,6 @@ def test_catalog_repos_and_dependencies_all_have_full_sha_pins():
         int(rev, 16)  # raises ValueError if not hex
 
 
-def test_nllb_components_use_the_reviewed_revision():
-    from api.routers import dub_translate
-
-    calls = []
-
-    class FakeFactory:
-        @classmethod
-        def from_pretrained(cls, repo_id, **kwargs):
-            calls.append((repo_id, kwargs))
-            return object()
-
-    dub_translate._load_nllb_component(FakeFactory)
-
-    repo_id = "facebook/nllb-200-distilled-600M"
-    assert calls == [
-        (
-            repo_id,
-            {
-                "revision": hf_revisions.revision_for(repo_id),
-                "local_files_only": True,
-            },
-        )
-    ]
 
 
 def test_installed_revision_round_trips_for_repair(tmp_path):

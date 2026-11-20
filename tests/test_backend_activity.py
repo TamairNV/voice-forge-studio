@@ -75,10 +75,9 @@ def test_running_work_and_unreadable_registries_keep_the_backend_alive(isolated)
 
 def test_owning_modules_register_their_work():
     import importlib
-    for module in ['core.job_store', 'services.proc_registry', 'services.dub_pipeline',
+    for module in ['core.job_store', 'services.proc_registry',
                    'services.sidecar_install', 'services.audiocpp_runtime_install',
-                   'api.routers.batch', 'api.routers.setup.download', 'api.routers.project_bundles',
-                   'services.telephony.calls']:
+                   'api.routers.setup.download']:
         importlib.import_module(module)
-    assert {'jobs', 'subprocesses', 'dub-ingest', 'engine-installs', 'runtime-install', 'batch',
-            'model-downloads', 'project-transfers', 'calls'} <= set(activity._probes)
+    assert {'jobs', 'subprocesses', 'engine-installs', 'runtime-install',
+            'model-downloads'} <= set(activity._probes)

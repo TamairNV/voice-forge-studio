@@ -64,5 +64,5 @@ VoiceStudio ships **continuous-to-main** — no release candidates, no soak wind
 Every merged PR is immediately part of rolling source (`main`) and Docker
 `:latest`. Electron artifact rehearsals validate desktop packages without publishing.
 Version bumps require owner approval; validated releases are tagged from `main`
-and published explicitly under [the release checklist](../docs/RELEASING.md).
+and published explicitly under the release checklist.
 Users who want stability install an Electron release or pin Docker `:stable`.

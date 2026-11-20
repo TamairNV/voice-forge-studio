@@ -39,13 +39,17 @@ def client():
     return TestClient(app, client=("127.0.0.1", 50000))
 
 
+_KEPT_FASTER_WHISPER_REPO = "deepdml/faster-whisper-large-v3-turbo-ct2"
+
+
 @contextlib.contextmanager
 def _offline_asr_missing(cached: bool):
-    """Deterministic offline (dub/batch) selection: faster-whisper large-v3,
+    """Deterministic offline selection: catalogued faster-whisper turbo,
     with the HF cache reporting installed/not-installed per ``cached``."""
     from api.routers.setup import models as setup_models
     from services import asr_backend
-    with patch.object(asr_backend, "active_backend_id", return_value="faster-whisper"), \
+    with patch.dict(os.environ, {"ASR_MODEL_FASTER": _KEPT_FASTER_WHISPER_REPO}), \
+         patch.object(asr_backend, "active_backend_id", return_value="faster-whisper"), \
          patch.object(setup_models, "is_cached", return_value=cached), \
          patch.object(setup_models, "cache_is_complete", return_value=True):
         yield
@@ -57,7 +61,8 @@ def _dictation_whisper_missing():
     faster-whisper package available, model NOT cached."""
     from api.routers.setup import models as setup_models
     from services import asr_backend
-    with patch.object(asr_backend, "dictation_model_id", return_value=None), \
+    with patch.dict(os.environ, {"ASR_MODEL_FASTER": _KEPT_FASTER_WHISPER_REPO}), \
+         patch.object(asr_backend, "dictation_model_id", return_value=None), \
          patch.object(asr_backend.MLXWhisperBackend, "is_available",
                       return_value=(False, "not apple silicon")), \
          patch.object(asr_backend.FasterWhisperBackend, "is_available",
@@ -83,35 +88,18 @@ class TestHelper:
             payload = asr_model_missing_error()
         assert payload is not None
         assert payload["error"] == "asr_model_missing"
-        assert payload["missing_repo_id"] == "Systran/faster-whisper-large-v3"
+        assert payload["missing_repo_id"] == _KEPT_FASTER_WHISPER_REPO
         rec = payload["recommended"]
-        # The missing repo is itself in the catalog → recommend exactly it,
+        # The missing repo is itself in the catalog -> recommend exactly it,
         # so the one-click download makes a retry succeed.
-        assert rec["repo_id"] == "Systran/faster-whisper-large-v3"
+        assert rec["repo_id"] == _KEPT_FASTER_WHISPER_REPO
         assert rec["label"] and rec["size_gb"] > 0
 
     def test_opt_in_engines_are_not_gated(self):
-        # FunASR/NeMo/… are explicit opt-ins we can't preflight — never block.
+        # NeMo is an explicit opt-in we can't preflight — never block.
         from services import asr_backend
-        with patch.object(asr_backend, "active_backend_id", return_value="funasr"):
+        with patch.object(asr_backend, "active_backend_id", return_value="nemo-parakeet"):
             assert asr_backend.asr_model_missing_error() is None
-
-    def test_dictation_sherpa_selected_but_not_installed(self):
-        from services import asr_backend
-        from services import sherpa_dictation as sd
-        with patch.object(asr_backend, "dictation_model_id",
-                          return_value="sherpa-parakeet-tdt-v3"), \
-             patch.object(asr_backend.SherpaDictationBackend, "is_available",
-                          return_value=(True, "ready")), \
-             patch.object(sd, "is_installed", return_value=False):
-            payload = asr_backend.asr_model_missing_error(purpose="dictation")
-        assert payload is not None
-        assert payload["error"] == "asr_model_missing"
-        rec = payload["recommended"]
-        # The explicitly selected sherpa entry, with the dictation_id the
-        # client needs to set so the retry picks it up.
-        assert rec["repo_id"] == "csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8"
-        assert rec["dictation_id"] == "sherpa-parakeet-tdt-v3"
 
     def test_dictation_sherpa_installed_is_fine(self):
         from services import asr_backend
@@ -123,37 +111,13 @@ class TestHelper:
              patch.object(sd, "is_installed", return_value=True):
             assert asr_backend.asr_model_missing_error(purpose="dictation") is None
 
-    def test_demoted_sherpa_preflights_capture_fallback(self):
-        """The next session follows demotion even when `?model=` persists."""
-        from api.routers.setup import models as setup_models
-        from services import asr_backend
-        from services import sherpa_dictation as sd
-
-        fallback_repo = "Systran/faster-whisper-large-v3"
-        with patch.object(asr_backend.SherpaDictationBackend, "is_available",
-                          return_value=(True, "ready")), \
-             patch.object(sd, "is_demoted", return_value=True), \
-             patch.object(sd, "is_installed", return_value=True), \
-             patch.object(asr_backend, "_capture_whisper_repo",
-                          return_value=fallback_repo), \
-             patch.object(setup_models, "is_cached", return_value=False), \
-             patch.object(setup_models, "cache_is_complete", return_value=True):
-            payload = asr_backend.asr_model_missing_error(
-                purpose="dictation",
-                sherpa_model_id="sherpa-parakeet-tdt-v3",
-            )
-
-        assert payload is not None
-        assert payload["missing_repo_id"] == fallback_repo
-        assert payload["recommended"]["repo_id"] == "csukuangfj/sherpa-onnx-whisper-tiny"
-
     def test_demoted_default_never_recommends_itself(self):
         """Installing the CTA recommendation must escape, not clear, a demotion loop."""
         from api.routers.setup import models as setup_models
         from services import asr_backend
         from services import sherpa_dictation as sd
 
-        fallback_repo = "Systran/faster-whisper-large-v3"
+        fallback_repo = _KEPT_FASTER_WHISPER_REPO
         with patch.object(asr_backend.SherpaDictationBackend, "is_available",
                           return_value=(True, "ready")), \
              patch.object(sd, "is_demoted",
@@ -229,28 +193,14 @@ class TestHelper:
         faster-whisper — it gets the same preflight, not a silent download."""
         from api.routers.setup import models as setup_models
         from services import asr_backend
-        with patch.object(asr_backend, "active_backend_id",
+        with patch.dict(os.environ, {"ASR_MODEL_FASTER": _KEPT_FASTER_WHISPER_REPO}), \
+             patch.object(asr_backend, "active_backend_id",
                           return_value="faster-whisper-isolated"), \
              patch.object(setup_models, "is_cached", return_value=False), \
              patch.object(setup_models, "cache_is_complete", return_value=True):
             payload = asr_backend.asr_model_missing_error()
         assert payload is not None
-        assert payload["missing_repo_id"] == "Systran/faster-whisper-large-v3"
-
-    def test_sherpa_offline_backend_maps_to_configured_model(self):
-        """OMNIVOICE_ASR_BACKEND=sherpa-onnx-asr preflights the configured
-        (default) sherpa dictation model's repo."""
-        from api.routers.setup import models as setup_models
-        from services import asr_backend
-        with patch.object(asr_backend, "active_backend_id",
-                          return_value="sherpa-onnx-asr"), \
-             patch.object(setup_models, "is_cached", return_value=False), \
-             patch.object(setup_models, "cache_is_complete", return_value=True):
-            payload = asr_backend.asr_model_missing_error()
-        assert payload is not None
-        assert payload["missing_repo_id"] == (
-            "csukuangfj/sherpa-onnx-whisper-tiny"
-        )
+        assert payload["missing_repo_id"] == _KEPT_FASTER_WHISPER_REPO
 
     def test_installed_positive_is_memoized(self):
         """Once a repo is confirmed installed, later preflights skip the
@@ -263,7 +213,8 @@ class TestHelper:
             calls["n"] += 1
             return True
 
-        with patch.object(asr_backend, "active_backend_id",
+        with patch.dict(os.environ, {"ASR_MODEL_FASTER": _KEPT_FASTER_WHISPER_REPO}), \
+             patch.object(asr_backend, "active_backend_id",
                           return_value="faster-whisper"), \
              patch.object(setup_models, "is_cached", side_effect=counting_is_cached), \
              patch.object(setup_models, "cache_is_complete", return_value=True):
@@ -294,25 +245,7 @@ def _assert_409(r):
 
 
 class TestEndpoints:
-    def test_batch_enqueue_409(self, client):
-        with _offline_asr_missing(cached=False):
-            r = client.post(
-                "/batch/enqueue",
-                files={"video": ("t.mp4", b"x", "video/mp4")},
-                data={"langs": "es"},
-            )
-        _assert_409(r)
 
-    def test_batch_enqueue_unaffected_when_installed(self, client):
-        # Backward compat: an install with whisper on disk never sees the 409.
-        # (Bad langs short-circuits before any job is actually enqueued.)
-        with _offline_asr_missing(cached=True):
-            r = client.post(
-                "/batch/enqueue",
-                files={"video": ("t.mp4", b"x", "video/mp4")},
-                data={"langs": " "},
-            )
-        assert r.status_code == 400  # the langs error, not the ASR 409
 
     def test_capture_transcribe_409(self, client):
         with _dictation_whisper_missing():
@@ -356,51 +289,8 @@ class TestEndpoints:
             )
         _assert_409(r)
 
-    def test_dub_legacy_transcribe_409(self, client, tmp_path):
-        from api.routers import dub_core
-        wav = tmp_path / "audio.wav"
-        wav.write_bytes(b"RIFF0000WAVE")
-        job = {"id": "j1", "audio_path": str(wav)}
-        with patch.object(dub_core, "_get_job", return_value=job), \
-             _offline_asr_missing(cached=False):
-            r = client.post("/dub/transcribe/j1")
-        _assert_409(r)
 
-    def test_dub_transcribe_preflights_even_with_preloaded_pipe(self, client, tmp_path):
-        """A preloaded `_asr_pipe` only substitutes for the *pytorch-whisper*
-        backend (its sole consumer) — with faster-whisper active and no
-        weights on disk, the typed 409 must still fire instead of letting the
-        backend auto-download."""
-        from api.routers import dub_core
-        wav = tmp_path / "audio.wav"
-        wav.write_bytes(b"RIFF0000WAVE")
-        job = {"id": "j3", "audio_path": str(wav)}
-        model = type("M", (), {"_asr_pipe": object()})()
 
-        async def fake_get_model():
-            return model
-
-        with patch.object(dub_core, "_get_job", return_value=job), \
-             patch.object(dub_core, "should_preload_tts_asr", return_value=True), \
-             patch.object(dub_core, "get_model", fake_get_model), \
-             _offline_asr_missing(cached=False):
-            r = client.post("/dub/transcribe/j3")
-        _assert_409(r)
-
-    def test_dub_stream_emits_typed_sse_error(self, client, tmp_path):
-        """EventSource can't read non-2xx bodies, so the SSE preflight must
-        carry the typed payload in-stream."""
-        from api.routers import dub_core
-        wav = tmp_path / "audio.wav"
-        wav.write_bytes(b"RIFF0000WAVE")
-        job = {"id": "j2", "audio_path": str(wav)}
-        with patch.object(dub_core, "_get_job", return_value=job), \
-             _offline_asr_missing(cached=False):
-            r = client.get("/dub/transcribe-stream/j2")
-        assert r.status_code == 200
-        assert "event: error" in r.text
-        assert '"error": "asr_model_missing"' in r.text
-        assert '"recommended"' in r.text
 
     def test_openai_compat_transcriptions_409(self, client):
         # #1175 review: the shared typed contract, not a string-only detail —
@@ -411,85 +301,6 @@ class TestEndpoints:
                 files={"file": ("t.wav", b"RIFF0000WAVE", "audio/wav")},
             )
         _assert_409(r)
-
-    def test_capture_ws_sends_typed_error_frame(self, client):
-        # The WS loopback guard moved to the shared is_local_host() helper
-        # (#1170), whose canonical host classification now lives in core.auth.
-        # Whitelist Starlette's synthetic host at that single source of truth.
-        from core import auth as _auth
-        with patch.object(_auth, "_LOOPBACK_HOSTS",
-                          frozenset(_auth._LOOPBACK_HOSTS) | {"testclient"}), \
-             _dictation_whisper_missing():
-            with client.websocket_connect("/ws/transcribe") as ws:
-                msg = ws.receive_json()
-        assert msg["type"] == "error"
-        assert msg["kind"] == "asr_model_missing"
-        assert msg["error"] == "asr_model_missing"
-        assert msg["recommended"]["repo_id"]
-
-    def test_capture_ws_invalid_override_still_preflights_whisper(self, client):
-        """#1175 review: an invalid ``?model=`` resolves to no sherpa spec, so
-        the session falls through to the Whisper path — the preflight must
-        follow it there instead of green-lighting the (installed) persisted
-        sherpa pref while Whisper weights are missing."""
-        import types
-
-        from api.routers.setup import models as setup_models
-        from core import auth as _auth
-        from services import asr_backend, sherpa_dictation
-
-        persisted = types.SimpleNamespace(id="persisted", repo_id="k2/persisted")
-        with patch.object(_auth, "_LOOPBACK_HOSTS",
-                          frozenset(_auth._LOOPBACK_HOSTS) | {"testclient"}), \
-             patch.object(sherpa_dictation, "get_spec",
-                          lambda mid: persisted if mid == "persisted" else None), \
-             patch.object(sherpa_dictation, "is_installed", lambda spec: True), \
-             patch.object(asr_backend, "dictation_model_id",
-                          return_value="persisted"), \
-             patch.object(asr_backend.SherpaDictationBackend, "is_available",
-                          return_value=(True, "ok")), \
-             patch.object(asr_backend, "_capture_prefers_parakeet",
-                          return_value=False), \
-             patch.object(asr_backend.MLXWhisperBackend, "is_available",
-                          return_value=(False, "not apple silicon")), \
-             patch.object(asr_backend.FasterWhisperBackend, "is_available",
-                          return_value=(True, "ready")), \
-             patch.object(setup_models, "is_cached", return_value=False), \
-             patch.object(setup_models, "cache_is_complete", return_value=True):
-            with client.websocket_connect("/ws/transcribe?model=not-a-model") as ws:
-                msg = ws.receive_json()
-        assert msg["type"] == "error"
-        assert msg["kind"] == "asr_model_missing"
-
-    def test_dub_stream_unloads_asr_on_early_terminal_error(self, client, tmp_path):
-        """#1175 review: a terminal error AFTER the ASR backend loaded (here:
-        undecodable audio) must still unload it — the unload used to live only
-        on the normal completion path, retaining VRAM on every early exit."""
-        from unittest.mock import MagicMock
-
-        from api.routers import dub_core
-        from services import asr_backend
-
-        wav = tmp_path / "audio.wav"
-        wav.write_bytes(b"RIFF0000WAVE")  # sf.read raises on this stub
-        job = {"id": "j4", "audio_path": str(wav)}
-        backend = MagicMock()
-        backend.id = "fake-asr"
-        unloaded = threading.Event()
-        backend.unload.side_effect = lambda *a, **k: unloaded.set()
-        with patch.object(dub_core, "_get_job", return_value=job), \
-             patch.object(asr_backend, "load_active_asr_backend",
-                          return_value=backend), \
-             _offline_asr_missing(cached=True):
-            r = client.get("/dub/transcribe-stream/j4")
-        assert r.status_code == 200
-        assert "Transcription failed. Check the selected ASR engine and try again." in r.text
-        assert str(wav) not in r.text
-        # The stream's `finally` hands unload() to the GPU pool
-        # fire-and-forget by design (it blocks, and runs under GeneratorExit),
-        # so it lands after the response closes. Wait on an Event it sets.
-        assert unloaded.wait(10.0), "ASR backend was never unloaded"
-        backend.unload.assert_called_once()
 
 
 class TestFallbackPreflight:

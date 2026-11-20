@@ -47,25 +47,6 @@ def downloads(monkeypatch, gguf_cache):
     return calls
 
 
-def test_offline_install_command_matches_the_pinned_pair():
-    """The pre-install command in the guide names the pinned pair and cache."""
-    doc = (REPO / "docs" / "engines" / "omnivoice-gguf.md").read_text(encoding="utf-8")
-    assert "hf download" in doc
-    assert REVISION in doc
-    for name in CPU_PAIR:
-        assert name in doc
-    assert "--cache-dir" in doc
-    # The Windows default the app redirects to, spelled out for PowerShell.
-    assert r"$env:LOCALAPPDATA\OmniVoice\hf_cache" in doc
-
-
-def test_install_hint_does_not_duplicate_the_pin():
-    """The revision lives in quant_map.json only; a copied pin would drift."""
-    from services.tts_backend import _INSTALL_HINTS
-
-    assert REVISION not in _INSTALL_HINTS["omnivoice-gguf"]
-
-
 def test_installed_pair_is_reused_without_a_second_download(
     gguf_cache, gguf_binary, gguf_engine
 ):

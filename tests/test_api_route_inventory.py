@@ -51,16 +51,11 @@ _CRITICAL = [
     "POST /generate", "GET /history",
     "GET /profiles", "POST /profiles", "PUT /profiles/{profile_id}",
     "DELETE /profiles/{profile_id}", "POST /design/describe",
-    "POST /dub/upload", "POST /dub/ingest-url", "POST /dub/generate/{job_id}",
-    "POST /dub/translate",
     "GET /engines", "POST /engines/select",
-    "GET /gallery/voices", "GET /archetypes",
-    "POST /audiobook", "POST /stories/encode", "POST /batch/enqueue",
+    "GET /archetypes",
     "POST /transcribe", "GET /api/settings/hf-token/state",
     "POST /v1/audio/speech", "POST /v1/audio/transcriptions",
-    "GET /.well-known/voicestudio-speech", "GET /v1/audio/capabilities",
-    "WS /ws/events", "WS /ws/tts", "WS /ws/transcribe",
-    "WS /v1/audio/transcriptions/stream",
+    "WS /ws/events", "WS /ws/tts",
 ]
 
 

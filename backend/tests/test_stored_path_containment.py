@@ -137,123 +137,17 @@ def _patch_db(monkeypatch, row):
     monkeypatch.setattr(db, "db_conn", lambda: _fake_db(row))
 
 
-def test_batch_voice_refuses_rows_outside_voices(escaped_voice, monkeypatch):
-    from api.routers import batch
+def test_stream_resolver_ignores_rows_outside_voices(escaped_voice, monkeypatch):
+    from api.routers import tts_stream
     from core import config
 
     monkeypatch.setattr(config, "VOICES_DIR", escaped_voice)
     _patch_db(monkeypatch, _profile_row(ref_audio_path="../outside.wav"))
-    with pytest.raises(ValueError):
-        batch._batch_voice("p1")
-
-    _patch_db(monkeypatch, _profile_row(ref_audio_path="ok.wav"))
-    assert batch._batch_voice("p1")["ref_audio"] == os.path.join(escaped_voice, "ok.wav")
-
-
-def test_audiobook_and_stream_resolvers_ignore_rows_outside_voices(escaped_voice, monkeypatch):
-    from api.routers import audiobook, tts_stream
-    from core import config
-
-    monkeypatch.setattr(config, "VOICES_DIR", escaped_voice)
-    _patch_db(monkeypatch, _profile_row(ref_audio_path="../outside.wav"))
-    assert audiobook._resolve_voice("p1")["ref_audio"] is None
     assert tts_stream.build_stream_kwargs({"voice": "p1", "text": "hi"}).get("ref_audio") is None
 
     _patch_db(monkeypatch, _profile_row(ref_audio_path="ok.wav"))
     expected = os.path.join(escaped_voice, "ok.wav")
-    assert audiobook._resolve_voice("p1")["ref_audio"] == expected
     assert tts_stream.build_stream_kwargs({"voice": "p1", "text": "hi"})["ref_audio"] == expected
-
-
-# ── call recordings ────────────────────────────────────────────────────────
-
-
-def test_call_recording_path_stays_in_the_calls_folder(tmp_path, monkeypatch):
-    from core import config
-    from services.telephony import calls
-
-    monkeypatch.setattr(config, "DATA_DIR", str(tmp_path))
-    (tmp_path / "calls").mkdir()
-    inside = tmp_path / "calls" / "c1.wav"
-    inside.write_bytes(b"RIFF")
-    outside = tmp_path / "secret.wav"
-    outside.write_bytes(b"RIFF")
-
-    _patch_db(monkeypatch, {"recording_path": str(outside)})
-    assert calls.recording_path("c1") is None
-    _patch_db(monkeypatch, {"recording_path": str(inside)})
-    assert calls.recording_path("c1") == str(inside)
-
-
-# ── gallery rows and uploads ───────────────────────────────────────────────
-
-
-@pytest.fixture(scope="module")
-def gallery_client():
-    from api.routers import gallery
-    from core.db import init_db
-
-    init_db()
-    gallery._init_gallery_db()
-    app = FastAPI()
-    app.include_router(gallery.router)
-    # Loopback peer so the router's require_consumer / require_admin gates let
-    # these handler tests through; denial is covered in test_gallery_profiles.
-    return TestClient(app, client=("127.0.0.1", 50000))
-
-
-def _gallery_row(audio_path: str) -> str:
-    from core.db import db_conn
-
-    voice_id = f"g{uuid.uuid4().hex[:7]}"
-    with db_conn() as conn:
-        conn.execute(
-            """INSERT INTO voice_gallery
-               (id, name, character, category, source_type, source_url, audio_path,
-                duration, description, tags, created_at)
-               VALUES (?, 'n', 'c', 'import', 'upload', '', ?, 1.0, '', '[]', ?)""",
-            (voice_id, audio_path, time.time()),
-        )
-    return voice_id
-
-
-def test_gallery_does_not_serve_or_delete_files_outside_its_folder(gallery_client, tmp_path):
-    outside = tmp_path / "keep.wav"
-    outside.write_bytes(b"RIFF keep")
-
-    voice_id = _gallery_row(str(outside))
-    assert gallery_client.get(f"/gallery/voices/{voice_id}/preview").status_code == 404
-    deleted = gallery_client.delete(f"/gallery/voices/{voice_id}")
-    assert deleted.status_code == 200
-    other = _gallery_row(str(outside))
-    batch = gallery_client.post("/gallery/voices/batch-delete", json={"ids": [other]})
-    assert batch.json()["deleted"] == 1
-    assert outside.read_bytes() == b"RIFF keep"
-
-
-def test_gallery_preview_still_serves_its_own_files(gallery_client):
-    from api.routers import gallery
-
-    gallery.VOICE_GALLERY_DIR.mkdir(parents=True, exist_ok=True)
-    path = gallery.VOICE_GALLERY_DIR / f"{uuid.uuid4().hex[:8]}.wav"
-    path.write_bytes(b"RIFF ok")
-    voice_id = _gallery_row(str(path))
-    response = gallery_client.get(f"/gallery/voices/{voice_id}/preview")
-    assert response.status_code == 200
-    assert response.content == b"RIFF ok"
-
-
-def test_gallery_upload_rejects_unusable_extensions(gallery_client):
-    from api.routers import gallery
-
-    before = set(Path(gallery.VOICE_GALLERY_DIR).glob("*"))
-    response = gallery_client.post(
-        "/gallery/upload",
-        data={"name": "x"},
-        files={"audio": ("clip.wav:stream", io.BytesIO(b"RIFF" + bytes(64)), "audio/wav")},
-    )
-    assert response.status_code == 415
-    assert set(Path(gallery.VOICE_GALLERY_DIR).glob("*")) == before
 
 
 # ── profile uploads ────────────────────────────────────────────────────────

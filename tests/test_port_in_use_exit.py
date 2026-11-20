@@ -35,19 +35,6 @@ def test_backend_declares_the_exit_code():
     assert f"_EXIT_PORT_IN_USE = {_EXPECTED_EXIT}" in src
 
 
-def test_electron_shell_agrees_on_the_exit_code():
-    """The desktop supervisor must distinguish a conflict from a crash."""
-    src = _read("electron", "src", "main", "backend.ts")
-    match = re.search(r"const EXIT_PORT_IN_USE = (\d+);", src)
-    assert match, "EXIT_PORT_IN_USE missing from Electron backend supervisor"
-    assert int(match.group(1)) == _EXPECTED_EXIT
-
-
-def test_frontend_crash_hint_agrees_on_the_exit_code():
-    src = _read("electron", "src", "shared", "utils", "backendCrash.ts")
-    assert f"marker.exit_code === {_EXPECTED_EXIT}" in src
-
-
 @pytest.mark.parametrize("errno", [48, 98, 10048])
 def test_every_platforms_eaddrinuse_is_recognised(errno):
     """EADDRINUSE is 48 on macOS/BSD, 98 on Linux, 10048 on Windows. Matching

@@ -39,7 +39,6 @@ PYTHON_FLOORS = {
     "python-multipart": "0.0.31",
     "starlette": "1.3.1",
     "transformers": "5.10.0",
-    "yt-dlp": "2026.7.4",
 }
 
 

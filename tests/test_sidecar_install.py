@@ -993,7 +993,7 @@ def test_list_backends_flags_indextts2_one_click():
     from services import tts_backend
     row = next(r for r in tts_backend.list_backends() if r["id"] == "indextts2")
     assert row["one_click_install"] is True
-    other = next(r for r in tts_backend.list_backends() if r["id"] == "omnivoice")
+    other = next(r for r in tts_backend.list_backends(include_hidden=True) if r["id"] == "omnivoice")
     assert other["one_click_install"] is False
 
 
@@ -1124,20 +1124,9 @@ def test_uninstalling_one_engine_leaves_every_other_engine_intact(monkeypatch):
         ("moss-tts-v15", ["--python", "3.11"],
          ["-e", "{c}[torch-runtime]", "torchcodec===0.8.1"],
          "OMNIVOICE_MOSS_TTS_V15_DIR"),
-        ("confucius4-tts", ["--python", "3.10"], ["-r", "{c}/requirements.txt"],
-         "OMNIVOICE_CONFUCIUS4_TTS_DIR"),
         ("dots-tts", ["--python", "3.11"],
          ["-e", "{c}", "-c", "{uri}/constraints/recommended.txt"],
          "OMNIVOICE_DOTS_TTS_DIR"),
-        ("ming-tts", ["--python", "3.10"], ["-r", "{c}/requirements.txt"],
-         "OMNIVOICE_MING_TTS_DIR"),
-        # moss-tts-nano installs soundfile alongside the editable install so
-        # torchaudio 2.7's I/O backend is present inside this engine's own
-        # venv — upstream's pyproject pins torchaudio but no backend
-        # (#2100). Without soundfile the engine's first load() crashes with
-        # "Couldn't find appropriate backend to handle uri …".
-        ("moss-tts-nano", ["--python", "3.11"],
-         ["-e", "{c}", "soundfile"], "OMNIVOICE_MOSS_TTS_NANO_DIR"),
     ],
 )
 def test_new_specs_install_recipe(monkeypatch, engine_id, venv_args, install_args, env_var):
@@ -1157,25 +1146,6 @@ def test_new_specs_install_recipe(monkeypatch, engine_id, venv_args, install_arg
     pip = next(a for a in argvs if a[1:3] == ["pip", "install"])
     assert pip[5:] == [arg.replace("{c}", checkout).replace("{uri}", si.managed_checkout(spec).resolve().as_uri())
                       for arg in install_args]
-
-
-def test_moss_tts_nano_probe_asserts_an_audio_backend_is_present(monkeypatch):
-    """The moss-tts-nano verify step asserts torchaudio.list_audio_backends()
-    is non-empty — catches a reinstall whose audio read path would crash at
-    first generation (#2100). The probe must compile and reference the
-    assertion so a future refactor cannot silently drop it.
-    """
-    spec = si.get_spec("moss-tts-nano")
-    assert spec.probe_code, (
-        "moss-tts-nano's verify probe must check torchaudio has a backend"
-    )
-    assert "list_audio_backends" in spec.probe_code
-    # The assertion message is allowed to mention a concrete dependency
-    # (soundfile / torchcodec) — that's user-facing guidance, not a probe
-    # requirement. The probe itself must only check the outcome.
-    assert "torchaudio.list_audio_backends()" in spec.probe_code
-    # Compile-check, since probe_code runs through python -c on Windows.
-    compile(spec.probe_code, "<probe>", "exec")
 
 
 @pytest.mark.parametrize("family", ["cuda", "cpu", "rocm", "mps"])
@@ -1233,12 +1203,12 @@ def test_verify_probe_runs_in_the_engines_venv_and_compiles(monkeypatch, engine_
 @pytest.mark.parametrize(
     ("family", "platform", "machine", "expected"),
     [
-        ("cuda", "linux", "x86_64", {"moss-tts-v15", "ming-tts", "dots-tts", "pockettts", "voxcpm2", "moss-tts-nano", "cosyvoice"}),
-        ("cuda", "win32", "AMD64", {"moss-tts-v15", "pockettts", "voxcpm2", "moss-tts-nano", "cosyvoice"}),
-        ("cpu", "win32", "AMD64", {"pockettts", "voxcpm2", "moss-tts-nano", "cosyvoice"}),
-        ("mps", "darwin", "arm64", {"dots-tts", "pockettts", "voxcpm2", "moss-tts-nano", "cosyvoice"}),
+        ("cuda", "linux", "x86_64", {"moss-tts-v15", "dots-tts", "pockettts", "voxcpm2", "cosyvoice"}),
+        ("cuda", "win32", "AMD64", {"moss-tts-v15", "pockettts", "voxcpm2", "cosyvoice"}),
+        ("cpu", "win32", "AMD64", {"pockettts", "voxcpm2", "cosyvoice"}),
+        ("mps", "darwin", "arm64", {"dots-tts", "pockettts", "voxcpm2", "cosyvoice"}),
         # Intel Mac: PyTorch publishes no build PocketTTS, VoxCPM2,
-        # MOSS-TTS-Nano or CosyVoice can use.
+        # or CosyVoice can use.
         ("cpu", "darwin", "x86_64", {"dots-tts"}),
     ],
 )
@@ -1247,8 +1217,8 @@ def test_installable_engine_ids_follow_the_host(monkeypatch, family, platform, m
     monkeypatch.setattr(si, "_host_family", lambda: family)
     monkeypatch.setattr(si.sys, "platform", platform)
     monkeypatch.setattr(platform_mod, "machine", lambda: machine)
-    # Offered on every host: IndexTTS 2.5, Confucius4, Supertonic-3.
-    expected = set(expected) | {"indextts2", "confucius4-tts", "supertonic3"}
+    # Offered on every host: IndexTTS 2.5.
+    expected = set(expected) | {"indextts2"}
     assert si.installable_engine_ids() == frozenset(expected)
 
 
@@ -1284,18 +1254,17 @@ def test_list_backends_offers_install_only_where_it_can_work(monkeypatch):
     monkeypatch.setattr(si, "_host_family", lambda: "cpu")
     monkeypatch.setattr(si.sys, "platform", "win32")
     rows = {r["id"]: r for r in tts_backend.list_backends()}
-    assert rows["confucius4-tts"]["one_click_install"] is True
+    assert rows["indextts2"]["one_click_install"] is True
     assert rows["moss-tts-v15"]["one_click_install"] is False
     assert rows["dots-tts"]["one_click_install"] is False
 
 
-# ── PyPI-package engines (Supertonic-3, PocketTTS) ─────────────────────────
+# ── PyPI-package engines (PocketTTS) ───────────────────────────────────────
 
 
 @pytest.mark.parametrize(
     ("engine_id", "package", "env_var"),
     [
-        ("supertonic3", "supertonic==1.3.1", "OMNIVOICE_SUPERTONIC3_DIR"),
         ("pockettts", "pocket-tts==2.1.0", "OMNIVOICE_POCKETTTS_DIR"),
     ],
 )
@@ -1340,16 +1309,16 @@ def test_pockettts_installs_cpu_torch_on_every_host(monkeypatch, family):
 
 
 def test_an_extra_already_in_the_app_env_counts_as_installed(monkeypatch):
-    """A `uv sync --extra supertonic` install keeps working and is never
+    """A `uv sync --extra pockettts` install keeps working and is never
     provisioned over."""
     import importlib.util as ilu
-    monkeypatch.delenv("OMNIVOICE_SUPERTONIC3_DIR", raising=False)
+    monkeypatch.delenv("OMNIVOICE_POCKETTTS_DIR", raising=False)
     real = ilu.find_spec
     monkeypatch.setattr(
-        ilu, "find_spec", lambda name, *a: object() if name == "supertonic" else real(name, *a)
+        ilu, "find_spec", lambda name, *a: object() if name == "pocket_tts" else real(name, *a)
     )
-    assert si.start_install("supertonic3")["status"] == "already_installed"
-    assert "supertonic3" not in si._jobs
+    assert si.start_install("pockettts")["status"] == "already_installed"
+    assert "pockettts" not in si._jobs
 
 
 def test_engine_venv_python_needs_a_real_interpreter(monkeypatch, tmp_path):
@@ -1369,11 +1338,7 @@ def test_engine_venv_python_needs_a_real_interpreter(monkeypatch, tmp_path):
 # The root of each pinned upstream commit, as GitHub lists it (2026-09-10).
 _UPSTREAM_ROOT_FILES = {
     "moss-tts-v15": ("pyproject.toml", "README.md", "LICENSE", "MANIFEST.in"),
-    "confucius4-tts": ("requirements.txt", "setup.py", "README.md", "LICENSE", "server.py"),
     "dots-tts": ("pyproject.toml", "README.md", "LICENSE", "constraints/recommended.txt"),
-    "ming-tts": ("requirements.txt", "ming_tts.py", "tts_tasks.py", "README.md", "LICENSE"),
-    "moss-tts-nano": ("pyproject.toml", "moss_tts_nano_runtime.py", "requirements.txt",
-                      "README.md", "LICENSE"),
     "cosyvoice": ("requirements.txt", "README.md", "LICENSE", "cosyvoice/cli/cosyvoice.py",
                   "asset/zero_shot_prompt.wav"),
 }
@@ -1595,11 +1560,7 @@ def test_rocm_args_never_reach_engines_without_a_known_torch(monkeypatch):
     [
         ("voxcpm2", "torch==2.11.0+rocm7.2", "torchaudio==2.11.0+rocm7.2",
          "https://download.pytorch.org/whl/rocm7.2"),
-        ("moss-tts-nano", "torch==2.7.0+rocm6.3", "torchaudio==2.7.0+rocm6.3",
-         "https://download.pytorch.org/whl/rocm6.3"),
         ("cosyvoice", "torch==2.7.0+rocm6.3", "torchaudio==2.7.0+rocm6.3",
-         "https://download.pytorch.org/whl/rocm6.3"),
-        ("confucius4-tts", "torch==2.7.0+rocm6.3", "torchaudio==2.7.0+rocm6.3",
          "https://download.pytorch.org/whl/rocm6.3"),
         ("indextts2", "torch==2.10.0+rocm7.1", "torchaudio==2.10.0+rocm7.1",
          "https://download.pytorch.org/whl/rocm7.1"),
@@ -1895,61 +1856,6 @@ def test_a_failed_dependency_install_names_the_windows_path_limit(monkeypatch, p
     assert ("LongPathsEnabled" in err.value.remediation) == (platform == "win32")
 
 
-@pytest.mark.parametrize('backends', [[], ['soundfile']])
-def test_moss_audio_probe_survives_optimization(backends):
-    """Missing audio support must fail even when Python assertions are disabled."""
-    import types
-    spec = si.get_spec('moss-tts-nano')
-    runtime = types.ModuleType('moss_tts_nano_runtime')
-    audio = types.ModuleType('torchaudio')
-    audio.list_audio_backends = lambda: backends
-    from unittest.mock import patch
-    with patch.dict(sys.modules, moss_tts_nano_runtime=runtime, torchaudio=audio):
-        probe = compile(spec.probe_code, '<probe>', 'exec', optimize=2)
-        if backends:
-            exec(probe, {})
-        else:
-            with pytest.raises(RuntimeError, match='I/O backend'):
-                exec(probe, {})
-
-
-def test_moss_existing_install_offers_dependency_repair(monkeypatch):
-    """Old completion markers cannot hide missing audio dependencies."""
-    spec = si.get_spec('moss-tts-nano')
-    checkout = si.managed_checkout(spec)
-    checkout.mkdir(parents=True)
-    monkeypatch.setattr(si, '_source_present', lambda *_: True)
-    py = si._venv_python(checkout / '.venv')
-    py.parent.mkdir(parents=True)
-    py.write_text('existing interpreter')
-    weights = checkout / 'cached-model.bin'
-    weights.write_bytes(b'existing weights')
-    marker = checkout / si._INSTALL_COMPLETE_MARKER
-    marker.write_text(spec.probe_module + '\n')
-    assert not si.get_status(spec.engine_id)['installed']
-    jobs = []
-    monkeypatch.setattr(si.threading, 'Thread', lambda **kw: SimpleNamespace(start=lambda: jobs.append(kw)))
-    monkeypatch.setattr(si, 'host_support', lambda _: (True, ''))
-    assert si.start_install(spec.engine_id)['status'] == 'started'
-    assert len(jobs) == 1
-    monkeypatch.setattr(si.subprocess, 'run', lambda *a, **k: SimpleNamespace(returncode=0, stdout='3.11\n'))
-    # Execute the repair transaction, including its real source/venv/deps/
-    # verification/weights steps. Only external operations are stubbed.
-    monkeypatch.setattr(si, '_step_preflight', lambda *_: None)
-    monkeypatch.setattr(si, '_locate_uv', lambda: '/fake/uv')
-    monkeypatch.setattr(si, '_persist', lambda *_: None)
-    commands = []
-    monkeypatch.setattr(si, '_run_logged', _fake_run_logged(commands))
-    job = _run(spec)
-    assert job['state'] == 'succeeded', job
-    assert len(commands) == 1
-    assert commands[0][1:3] == ['pip', 'install']
-    assert 'soundfile' in commands[0]
-    assert si._healthy(spec)
-    assert weights.read_bytes() == b'existing weights'
-    assert py.read_text(encoding="utf-8") == 'existing interpreter'
-
-
 @pytest.mark.parametrize('version', ['3.14', '3.11', '3.10'])
 def test_indextts_repairs_only_incompatible_python(monkeypatch, version):
     spec = si.SPECS['indextts2']
@@ -2034,7 +1940,7 @@ def test_unspecified_compatibility_does_not_rebuild_working_venv(monkeypatch, ve
     assert si._existing_venv_compatible(spec, Path("existing-python"))
 
 
-@pytest.mark.parametrize('engine', ['cosyvoice', 'moss-tts-nano', 'moss-tts-v15'])
+@pytest.mark.parametrize('engine', ['cosyvoice', 'moss-tts-v15'])
 def test_runtime_rejects_old_managed_recipe_but_preserves_external_installs(monkeypatch, tmp_path, engine):
     """Recipe upgrades invalidate managed markers while preserving external venvs."""
     spec = si.SPECS[engine]

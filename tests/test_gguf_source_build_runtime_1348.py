@@ -337,15 +337,6 @@ def test_build_script_copies_shared_libs_on_every_platform_branch():
         assert pattern in script
 
 
-def test_ci_artifact_upload_includes_the_shared_libs():
-    # Greptile P1 on the fix itself: copy_shared_libs is useless if the
-    # workflow's upload glob then drops the libs from the artifact — the
-    # downloaded binary would be exactly as broken as before.
-    wf = (REPO / ".github/workflows/build-omnivoice-tts.yml").read_text(encoding="utf-8")
-    assert "bin/libggml*" in wf
-    assert "bin/ggml*.dll" in wf
-
-
 def test_windows_build_finds_the_exe_for_either_generator():
     # Visual Studio writes build/Release/omnivoice-tts.exe; Ninja and
     # Makefiles write build/omnivoice-tts.exe. Copying only the first path

@@ -155,9 +155,3 @@ async def test_installer_thread_fallback_and_timeout(monkeypatch):
     assert timed_out.killed
 
 
-def test_simplified_chinese_language_aliases():
-    from api.routers.dub_translate import FLORES_CODES, LANG_NAMES, TRANSLATE_CODES
-
-    assert TRANSLATE_CODES["zh"] == TRANSLATE_CODES["cmn-Hans"] == "zh-CN"
-    assert FLORES_CODES["zh"] == FLORES_CODES["zh-CN"] == FLORES_CODES["cmn-Hans"] == "zho_Hans"
-    assert LANG_NAMES["zh"] == LANG_NAMES["zh-CN"] == LANG_NAMES["cmn-Hans"] == "Chinese (Simplified)"
