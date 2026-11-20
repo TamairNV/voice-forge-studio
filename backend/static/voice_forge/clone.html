@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Clone Studio · VoiceForge</title>
+  <link rel="stylesheet" href="/static/ui.css" />
+  <style>
+    main { display: grid; grid-template-columns: 300px 1fr; gap: 16px; padding: 22px 28px 110px; max-width: 1440px; margin: 0 auto; }
+    @media (max-width: 900px) { main { grid-template-columns: 1fr; padding: 12px 16px 110px; } }
+    .sticky { position: sticky; top: 92px; }
+    @media (max-width: 900px) { .sticky { position: static; } }
+    .profile-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; border: 1px solid transparent; cursor: pointer; }
+    .profile-item:hover { background: var(--bg-card); }
+    .profile-item.active { background: rgba(139, 124, 246, 0.14); border-color: rgba(139, 124, 246, 0.45); }
+    .avatar { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 800; background: var(--surface-3); flex-shrink: 0; }
+    .coverage { height: 4px; border-radius: 999px; background: var(--bg-input); overflow: hidden; margin-top: 4px; }
+    .coverage > div { height: 100%; background: linear-gradient(90deg, var(--accent-emerald), var(--ok)); }
+    details.tips summary { cursor: pointer; font-weight: 700; list-style: none; }
+    details.tips summary::-webkit-details-marker { display: none; }
+    .tips ul { margin: 8px 0 0 16px; display: flex; flex-direction: column; gap: 6px; color: var(--text-muted); font-size: 12px; }
+    .tips li b { color: var(--text-main); }
+    .slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+    @media (max-width: 420px) { .slots { grid-template-columns: 1fr; } }
+    .slot { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+    .slot.done { border-color: rgba(62, 207, 142, 0.4); }
+    .slot.recording { border-color: var(--accent-rose); box-shadow: 0 0 0 1px var(--accent-rose) inset; }
+    .slot-head { display: flex; align-items: center; gap: 8px; }
+    .slot-icon { font-size: 20px; }
+    .slot-title { font-size: 14px; font-weight: 700; flex: 1; }
+    .how { font-size: 11.5px; color: #c2b9ff; }
+    .script { background: var(--bg-input); border: 1px solid var(--border); border-radius: 8px; padding: 9px 10px; font-size: 13.5px; line-height: 1.55; }
+    .script[contenteditable]:focus { outline: none; border-color: var(--accent-indigo); }
+    .meter { height: 8px; border-radius: 999px; background: var(--bg-input); overflow: hidden; position: relative; }
+    .meter > div { height: 100%; width: 0; background: linear-gradient(90deg, #10b981 0%, #10b981 65%, #f59e0b 80%, #f43f5e 95%); background-size: 100% 100%; transition: width 0.05s; }
+    .countdown { font-size: 28px; font-weight: 800; text-align: center; color: var(--bad); }
+    .quality { font-size: 11.5px; color: var(--text-muted); display: flex; flex-direction: column; gap: 3px; }
+    .quality .tip { color: var(--warn); }
+    .clip-ref { font-size: 11px; color: var(--text-dim); font-style: italic; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  </style>
+</head>
+<body>
+  <header class="page-head">
+    <div>
+      <h1>Clone Studio</h1>
+      <p>Record one person in every emotion; scenes pick the right clip per line.</p>
+    </div>
+    <div class="page-actions">
+      <a class="btn-sm" href="/voices">Voice Library</a>
+    </div>
+  </header>
+
+  <main>
+    <div class="col">
+      <div class="panel">
+        <div class="panel-title"><span>Character profiles</span></div>
+        <div id="profileList"></div>
+        <div class="row nowrap" style="margin-top: 10px;">
+          <input type="text" id="newName" placeholder="New person, e.g. Tamair" onkeydown="if (event.key === 'Enter') createProfile()" />
+          <button class="btn-sm emerald" onclick="createProfile()">+ Add</button>
+        </div>
+      </div>
+
+      <div class="panel sticky">
+        <div class="panel-title"><span>Microphone</span></div>
+        <select id="micSelect" onchange="savePrefs(); if (micIsOn()) { disarmMic(); armMic().catch(() => {}); }"><option value="">Default microphone</option></select>
+        <div class="row" style="margin-top: 8px;">
+          <button class="btn-sm" id="micTestBtn" onclick="toggleMicTest()">Mic on</button>
+          <div class="meter grow"><div id="testMeter"></div></div>
+        </div>
+        <div class="dim" style="margin-top: 6px;">Switch the mic on before a recording session: it stays on between takes so every take starts at full level. Aim for the yellow on loud words, never red.</div>
+
+        <details class="tips" open style="margin-top: 14px;">
+          <summary>Why recordings sound strange, and how to fix it</summary>
+          <ul>
+            <li><b>It's not just you.</b> Everyone hates hearing their own recorded voice, because normally you also hear yourself through your skull. The recording is what others hear.</li>
+            <li><b>Processing is switched off here.</b> Browsers and call apps run noise suppression, echo cancelling and auto-gain, which make voices sound watery and robotic. This page records the raw mic.</li>
+            <li><b>A hand-span away.</b> Keep the mic 15-20 cm from your mouth, slightly off to the side so P and B sounds don't pop.</li>
+            <li><b>Soft room.</b> Bare walls make echo, which gets cloned. A bedroom with curtains, a wardrobe full of clothes, or a duvet over your head works wonders. Turn off fans and the TV.</li>
+            <li><b>Same mic, same spot</b> for every emotion, so the profile sounds like one person. A phone voice memo app often beats a laptop mic.</li>
+            <li><b>Act it, don't read it.</b> Read the line twice silently first, then perform it as if it's real. Stand up for energy; smile for happy lines.</li>
+            <li><b>8-12 seconds, one emotion.</b> Leave half a second of silence at the start and end. If you stumble, just retake.</li>
+            <li><b>Loud emotions:</b> step back for shouting so it doesn't distort; lean in a little for whispers.</li>
+          </ul>
+        </details>
+      </div>
+    </div>
+
+    <div class="col" id="profileView">
+      <div class="panel"><div class="empty">Add a person on the left to start recording their voice.</div></div>
+    </div>
+  </main>
+
+  <div class="now-playing" id="nowPlaying">
+    <button class="btn-sm" id="npToggle" onclick="player && player.ended ? (player.currentTime = 0, player.play()) : togglePlayback()">⏸</button>
+    <div class="np-main">
+      <div class="row nowrap" style="justify-content: space-between;"><span id="npLabel" class="np-label"></span><span id="npTime" class="dim"></span></div>
+      <div class="np-track" onclick="seekNowPlaying(event)"><div class="np-progress" id="npProgress"></div></div>
+    </div>
+    <button class="btn-sm rose" onclick="stopPlayback()" title="Stop (Esc)">⏹</button>
+  </div>
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const TEST_TEMP = 0.95;
+    const state = {
+      emotions: [], profiles: [], roster: [], activeId: null,
+      scriptIdx: {},      // emotion -> index into its suggested scripts
+      customScript: {},   // emotion -> text (edited or Claude-written)
+      takes: {},          // emotion -> {blob, url} recorded but not saved yet
+      results: {},        // emotion -> last save result (quality, heard)
+      recording: null,    // {emotion, recorder, stream, started}
+      busy: {},
+    };
+    let player = null, playerUrl = null;
+
+    function $(id) { return document.getElementById(id); }
+    function escapeHtml(str) {
+      return String(str ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+    }
+    function toast(msg, ms = 3200) {
+      const t = $('toast'); t.textContent = msg; t.classList.add('show');
+      clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('show'), ms);
+    }
+    async function api(path, opts = {}) {
+      const isForm = opts.body instanceof FormData;
+      const res = await fetch(path, { headers: isForm ? {} : { 'Content-Type': 'application/json' }, ...opts });
+      let data = null;
+      try { data = await res.json(); } catch (e) { /* non-JSON */ }
+      if (!res.ok) throw new Error(data && data.detail ? (typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail)) : res.statusText);
+      return data;
+    }
+
+    // ---------------------------------------------------------------- player
+    function play(url, label) {
+      if (player && playerUrl === url && !player.ended) { if (player.paused) player.play(); else player.pause(); return; }
+      stopPlayback();
+      playerUrl = url;
+      player = new Audio(url.startsWith('blob:') || url.includes('?') ? url : url + '?t=' + Date.now());
+      player.dataset.label = label || 'Preview';
+      ['play', 'pause', 'ended', 'timeupdate', 'loadedmetadata'].forEach(ev => player.addEventListener(ev, updateNowPlaying));
+      player.play().catch(e => toast('Could not play: ' + e.message));
+      updateNowPlaying();
+    }
+    function stopPlayback() { if (player) { player.pause(); player.src = ''; } player = null; playerUrl = null; updateNowPlaying(); }
+    function togglePlayback() { if (player) { if (player.paused) player.play(); else player.pause(); } }
+    function fmtTime(t) { t = Math.max(0, t || 0); return Math.floor(t / 60) + ':' + String(Math.floor(t % 60)).padStart(2, '0'); }
+    function updateNowPlaying() {
+      const bar = $('nowPlaying');
+      if (!player) { bar.classList.remove('show'); return; }
+      bar.classList.add('show');
+      $('npToggle').textContent = player.ended ? '↻' : (player.paused ? '▶' : '⏸');
+      $('npLabel').textContent = player.dataset.label;
+      $('npTime').textContent = `${fmtTime(player.currentTime)} / ${fmtTime(isFinite(player.duration) ? player.duration : 0)}`;
+      $('npProgress').style.width = player.duration && isFinite(player.duration) ? (player.currentTime / player.duration * 100) + '%' : '0%';
+    }
+    function seekNowPlaying(e) {
+      if (!player || !player.duration || !isFinite(player.duration)) return;
+      const r = e.currentTarget.getBoundingClientRect();
+      player.currentTime = (e.clientX - r.left) / r.width * player.duration;
+    }
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && player) stopPlayback(); });
+
+    // ------------------------------------------------------------------ data
+    function active() { return state.profiles.find(p => p.id === state.activeId); }
+    function clipFor(p, emo) { return (p.clips || []).find(c => c.emotion === emo); }
+    async function loadAll() {
+      const [e, p, r] = await Promise.all([api('/api/profiles/emotions'), api('/api/profiles'), api('/api/characters')]);
+      state.emotions = e.emotions;
+      state.profiles = p.profiles;
+      state.roster = r.characters;
+      if (!active() && state.profiles.length) state.activeId = prefs().active && state.profiles.some(x => x.id === prefs().active) ? prefs().active : state.profiles[0].id;
+      renderProfiles(); renderProfile();
+    }
+    function prefs() { try { return JSON.parse(localStorage.getItem('vf_clone_prefs') || '{}'); } catch (e) { return {}; } }
+    function savePrefs() { try { localStorage.setItem('vf_clone_prefs', JSON.stringify({ mic: $('micSelect').value, active: state.activeId })); } catch (e) { /* ignore */ } }
+
+    // -------------------------------------------------------------- profiles
+    function renderProfiles() {
+      const n = state.emotions.length || 13;
+      $('profileList').innerHTML = state.profiles.length ? state.profiles.map(p => `
+        <div class="profile-item ${p.id === state.activeId ? 'active' : ''}" onclick="selectProfile('${p.id}')">
+          <div class="avatar">${escapeHtml(p.name.charAt(0).toUpperCase())}</div>
+          <div class="grow">
+            <div style="font-weight: 700;">${escapeHtml(p.name)}</div>
+            <div class="dim">${p.clips.length} of ${n} emotions</div>
+            <div class="coverage"><div style="width: ${p.clips.length / n * 100}%"></div></div>
+          </div>
+        </div>`).join('') : '<div class="dim">No profiles yet.</div>';
+    }
+    function selectProfile(id) { state.activeId = id; state.takes = {}; state.results = {}; savePrefs(); renderProfiles(); renderProfile(); }
+    async function createProfile() {
+      const name = $('newName').value.trim();
+      if (!name) { toast('Type a name first.'); return; }
+      try {
+        const d = await api('/api/profiles', { method: 'POST', body: JSON.stringify({ name }) });
+        state.profiles = d.profiles; state.activeId = d.profile.id; $('newName').value = '';
+        savePrefs(); renderProfiles(); renderProfile();
+        toast(`Created ${name}. Start with Neutral, then work through the emotions you'll need.`, 4500);
+      } catch (e) { toast('Failed: ' + e.message); }
+    }
+    async function updateProfile(field, value) {
+      const p = active();
+      try {
+        const d = await api(`/api/profiles/${p.id}`, { method: 'PATCH', body: JSON.stringify({ [field]: value }) });
+        state.profiles = d.profiles; renderProfiles();
+        if (field === 'engine') renderProfile();
+      }
+      catch (e) { toast('Failed: ' + e.message); }
+    }
+    // Engine for this person's lines, and Chatterbox's anchor/emotion dial (0 = neutral clip only, 1 = emotion clip only)
+    function engineSettings(p) {
+      const engine = p.engine || 'qwen3_clone';
+      const blend = p.emotion_blend ?? 0.35, shout = p.shout_blend ?? 0.25;
+      const slider = (field, val, label) => `
+        <label class="field" style="margin-top: 6px;"><span>${label}</span><span id="${field}Val">${Math.round(val * 100)}%</span></label>
+        <input type="range" min="0" max="1" step="0.05" value="${val}" oninput="$('${field}Val').textContent = Math.round(this.value * 100) + '%'" onchange="updateProfile('${field}', parseFloat(this.value))" />`;
+      return `
+        <div class="row" style="margin-top: 10px; align-items: flex-start;">
+          <div style="min-width: 200px;">
+            <label class="field" style="margin-top: 0;"><span>Engine</span></label>
+            <select onchange="updateProfile('engine', this.value)">
+              <option value="qwen3_clone" ${engine === 'qwen3_clone' ? 'selected' : ''}>Qwen3 Clone: closest to your voice</option>
+              <option value="chatterbox" ${engine === 'chatterbox' ? 'selected' : ''}>Chatterbox: more emotion</option>
+            </select>
+          </div>
+          ${engine === 'chatterbox' ? `
+          <div style="flex: 1; min-width: 220px;">
+            ${slider('emotion_blend', blend, 'Emotion blend')}
+            ${slider('shout_blend', shout, 'Shouting lines')}
+            <div class="dim">Each line mixes your Neutral clip (steady, one consistent voice) with that line's emotion clip (more feeling, but the voice drifts). 35% is the tested sweet spot; shouting drifts first, so it sits lower. Every line is rendered 3 times and the take closest to your Neutral voice is kept.</div>
+          </div>` : ''}
+        </div>`;
+    }
+    async function deleteProfile() {
+      const p = active();
+      if (!confirm(`Delete the profile "${p.name}"?`)) return;
+      const alsoVoices = p.clips.length && confirm(`Also delete the clips you recorded for ${p.name} from the Voice Library? (Voices you linked in from the library are always kept.)\n\nOK = delete them too, Cancel = keep them as separate voices.`);
+      const d = await api(`/api/profiles/${p.id}?delete_voices=${alsoVoices ? 'true' : 'false'}`, { method: 'DELETE' });
+      state.profiles = d.profiles; state.activeId = state.profiles[0] ? state.profiles[0].id : null;
+      savePrefs(); renderProfiles(); renderProfile();
+    }
+
+    function scriptFor(emo) {
+      if (state.customScript[emo]) return state.customScript[emo];
+      const e = state.emotions.find(x => x.id === emo);
+      return e.scripts[(state.scriptIdx[emo] || 0) % e.scripts.length];
+    }
+    function renderProfile() {
+      const p = active();
+      if (!p) { $('profileView').innerHTML = '<div class="panel"><div class="empty">Add a person on the left to start recording their voice.</div></div>'; return; }
+      const done = p.clips.length;
+      const nextEmpty = state.emotions.find(e => !clipFor(p, e.id));
+      $('profileView').innerHTML = `
+        <div class="panel">
+          <div class="row nowrap">
+            <div class="avatar" style="width: 40px; height: 40px; font-size: 18px;">${escapeHtml(p.name.charAt(0).toUpperCase())}</div>
+            <input type="text" value="${escapeHtml(p.name)}" style="font-size: 16px; font-weight: 700;" onchange="updateProfile('name', this.value)" title="Rename profile" />
+            <button class="btn-sm rose" onclick="deleteProfile()">🗑</button>
+          </div>
+          <input type="text" style="margin-top: 8px;" placeholder="Notes about this voice (optional), e.g. 'my natural voice, slight Midlands accent'" value="${escapeHtml(p.description || '')}" onchange="updateProfile('description', this.value)" />
+          ${engineSettings(p)}
+          <div class="row" style="margin-top: 10px;">
+            <span class="badge ${done ? 'ok' : 'warn'}">${done} of ${state.emotions.length} emotions recorded</span>
+            ${nextEmpty ? `<button class="btn-sm" onclick="document.getElementById('slot_${nextEmpty.id}').scrollIntoView({behavior: 'smooth', block: 'center'})">Next to record: ${nextEmpty.icon} ${nextEmpty.label}</button>` : '<span class="badge ok">All emotions covered 🎉</span>'}
+            <span class="dim">In the Casting Desk, pick <b>${escapeHtml(p.name)}</b> as a character's voice and each line uses the closest emotion.</span>
+          </div>
+          <div class="row nowrap" style="margin-top: 10px;">
+            <input type="text" id="testLine" placeholder="Type a line to hear ${escapeHtml(p.name)} say it…" onkeydown="if (event.key === 'Enter') testProfile(document.getElementById('testBtn'))" />
+            <select id="testEmotion" style="width: 150px;">
+              <option value="auto">Auto emotion</option>
+              ${state.emotions.map(e => `<option value="${e.id}" ${clipFor(p, e.id) ? '' : 'disabled'}>${e.icon} ${e.label}</option>`).join('')}
+            </select>
+            <button class="btn-sm violet" id="testBtn" onclick="testProfile(this)" ${done ? '' : 'disabled'}>Say</button>
+          </div>
+        </div>
+        <div class="slots">${state.emotions.map(e => slotCard(p, e)).join('')}</div>`;
+    }
+    function qualityBadge(q) {
+      if (!q) return '';
+      const cls = q.score >= 80 ? 'ok' : q.score >= 55 ? 'warn' : 'bad';
+      return `<span class="badge ${cls}" title="Speech ${q.speech_dbfs} dBFS · noise ${q.noise_floor_dbfs} dBFS · peak ${q.peak_dbfs} dBFS">mic ${q.score}/100</span>`;
+    }
+    function slotCard(p, e) {
+      const clip = clipFor(p, e.id);
+      const take = state.takes[e.id];
+      const rec = state.recording && state.recording.emotion === e.id;
+      const busy = state.busy[e.id];
+      const res = state.results[e.id];
+      const q = (res && res.quality) || (clip && clip.quality);
+      const otherVoices = state.roster.filter(v => !p.clips.some(c => c.character_id === v.id));
+      return `
+      <div class="slot ${clip ? 'done' : ''} ${rec ? 'recording' : ''}" id="slot_${e.id}">
+        <div class="slot-head">
+          <span class="slot-icon">${e.icon}</span>
+          <span class="slot-title">${e.label}</span>
+          ${clip ? `<span class="badge ok">✓ recorded</span>` : '<span class="badge">empty</span>'}
+          ${qualityBadge(q)}
+        </div>
+        <div class="how">How: ${escapeHtml(e.how)}</div>
+        <div class="script" contenteditable="true" id="script_${e.id}" oninput="state.customScript['${e.id}'] = this.innerText" title="Read this aloud. You can edit it.">${escapeHtml(scriptFor(e.id))}</div>
+        <div class="row">
+          <button class="btn-sm" onclick="nextScript('${e.id}')" title="Another suggested line">Another line</button>
+          <button class="btn-sm violet" onclick="claudeScript('${e.id}', this)" title="Claude writes a fresh line for this emotion, fitting the profile notes">Write one</button>
+        </div>
+        ${rec ? `
+          ${state.recording.countdown ? `<div class="countdown" style="${typeof state.recording.countdown === 'string' ? 'font-size: 15px;' : ''}">${state.recording.countdown}</div>` : `
+          <div class="row nowrap"><span class="badge bad">● REC <span id="recTime">0.0</span>s</span><div class="meter grow"><div id="recMeter"></div></div></div>`}
+          <button class="btn-sm rec" onclick="stopRecording()">⏹ Stop</button>` : `
+        <div class="row">
+          <button class="btn-sm rec" onclick="startRecording('${e.id}')" ${busy || state.recording ? 'disabled' : ''}>⏺ ${clip ? 'Re-record' : 'Record'}</button>
+          <label class="btn-sm" ${busy ? 'style="opacity:0.45; pointer-events:none;"' : ''}>Upload<input type="file" accept="audio/*,video/mp4,.wav,.mp3,.m4a,.mp4,.mov,.webm,.flac,.ogg,.aac" style="display:none" onchange="uploadTake('${e.id}', this)" /></label>
+          ${clip ? `<button class="btn-sm" onclick="play('${clip.url}', ${escapeHtml(JSON.stringify(p.name + ' · ' + e.label + ' (saved clip)'))})">▶ Saved clip</button>
+                    <button class="btn-sm violet" onclick="testSlot('${e.id}', this)" title="Generate a new line from this clip">Test</button>` : ''}
+        </div>`}
+        ${take ? `
+          <div class="row" style="padding: 8px; border-radius: 8px; background: var(--bg-input);">
+            <span class="dim grow">New take · ${take.seconds.toFixed(1)}s ${take.seconds < 5 ? '(a bit short)' : ''}</span>
+            <button class="btn-sm" onclick="play('${take.url}', 'New take · ${e.label}')">▶ Listen back</button>
+            <button class="btn-sm emerald" onclick="saveTake('${e.id}', this)" ${busy ? 'disabled' : ''}>${busy ? '<span class="spinner"></span> Saving…' : '✓ Use this take'}</button>
+            <button class="btn-sm" onclick="discardTake('${e.id}')">✕</button>
+          </div>` : ''}
+        ${res ? `
+          <div class="quality">
+            ${res.used_script_as_transcript ? '<span>✓ Transcript matches the script.</span>' : `<span>Heard: “${escapeHtml(res.heard)}” (${Math.round((res.script_match || 0) * 100)}% match, so the heard words are used as the transcript)</span>`}
+            ${(res.quality && res.quality.tips.length) ? res.quality.tips.map(t => `<span class="tip">⚠ ${escapeHtml(t)}</span>`).join('') : (res.quality ? '<span style="color:var(--ok);">✓ Levels and noise look good.</span>' : '')}
+          </div>` : (clip ? `<div class="clip-ref" title="${escapeHtml(clip.ref_text)}">“${escapeHtml(clip.ref_text)}”</div>` : '')}
+        <div class="row">
+          <select class="grow" style="font-size: 11.5px; padding: 4px 6px;" onchange="if (this.value) linkVoice('${e.id}', this.value)">
+            <option value="">Use an existing voice instead…</option>
+            ${otherVoices.map(v => `<option value="${v.id}">${escapeHtml(v.name)}</option>`).join('')}
+          </select>
+          ${clip ? `<button class="btn-sm rose" onclick="unlinkClip('${e.id}')" title="Remove from this profile (the voice stays in the library)">✕</button>` : ''}
+        </div>
+      </div>`;
+    }
+    function nextScript(emo) { delete state.customScript[emo]; state.scriptIdx[emo] = (state.scriptIdx[emo] || 0) + 1; renderProfile(); }
+    async function claudeScript(emo, btn) {
+      btn.innerHTML = '<span class="spinner"></span>'; btn.disabled = true;
+      try {
+        const p = active();
+        const d = await api('/api/profiles/prompts', { method: 'POST', body: JSON.stringify({ emotion: emo, context: `${p.name}. ${p.description || ''}` }) });
+        state.customScript[emo] = d.script;
+        renderProfile();
+        if (d.how) toast('How to say it: ' + d.how, 6000);
+      } catch (e) { toast('Claude failed: ' + e.message, 6000); btn.innerHTML = 'Write one'; btn.disabled = false; }
+    }
+
+    // ------------------------------------------------------------- recording
+    function micConstraints() {
+      // Raw mic: browser voice processing is the main reason recordings sound watery or robotic
+      const audio = { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 };
+      if ($('micSelect').value) audio.deviceId = { exact: $('micSelect').value };
+      return { audio };
+    }
+    async function listMics() {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const mics = devices.filter(d => d.kind === 'audioinput');
+        const saved = prefs().mic || '';
+        $('micSelect').innerHTML = '<option value="">Default microphone</option>' + mics.map((m, i) =>
+          `<option value="${m.deviceId}" ${m.deviceId === saved ? 'selected' : ''}>${escapeHtml(m.label || 'Microphone ' + (i + 1))}</option>`).join('');
+      } catch (e) { /* no media devices */ }
+    }
+    // The mic stays open between takes: some mics (the MacBook's built-in one especially) come in very quiet
+    // for the first few seconds after a browser opens them, so the first take gets a warm-up and later takes
+    // start instantly. Audio is captured as raw PCM and saved as a lossless WAV.
+    const MIC_WARMUP_MS = 4500;
+    const MIC_IDLE_CLOSE_MS = 4 * 60 * 1000;
+    const mic = { stream: null, ctx: null, analyser: null, proc: null, deviceId: null, capture: null, idleTimer: null, raf: null };
+    function micIsOn() { return !!(mic.stream && mic.stream.active && mic.ctx && mic.ctx.state !== 'closed'); }
+    async function armMic() {
+      const want = $('micSelect').value;
+      if (micIsOn() && mic.deviceId === want) { bumpIdle(); return false; }
+      disarmMic();
+      mic.stream = await navigator.mediaDevices.getUserMedia(micConstraints());
+      mic.ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const src = mic.ctx.createMediaStreamSource(mic.stream);
+      mic.analyser = mic.ctx.createAnalyser(); mic.analyser.fftSize = 1024;
+      mic.proc = mic.ctx.createScriptProcessor(4096, 1, 1);
+      mic.proc.onaudioprocess = e => { if (mic.capture) mic.capture.push(new Float32Array(e.inputBuffer.getChannelData(0))); };
+      const mute = mic.ctx.createGain(); mute.gain.value = 0;  // processor must reach the destination to run; keep it silent
+      src.connect(mic.analyser); src.connect(mic.proc); mic.proc.connect(mute); mute.connect(mic.ctx.destination);
+      mic.deviceId = want;
+      listMics(); meterLoop(); bumpIdle(); updateMicButton();
+      return true;
+    }
+    function disarmMic() {
+      if (mic.raf) cancelAnimationFrame(mic.raf);
+      if (mic.stream) mic.stream.getTracks().forEach(t => t.stop());
+      if (mic.ctx && mic.ctx.state !== 'closed') mic.ctx.close();
+      Object.assign(mic, { stream: null, ctx: null, analyser: null, proc: null, capture: null, raf: null });
+      clearTimeout(mic.idleTimer);
+      ['testMeter', 'recMeter'].forEach(id => { const el = $(id); if (el) el.style.width = '0'; });
+      updateMicButton();
+    }
+    function bumpIdle() {
+      clearTimeout(mic.idleTimer);
+      mic.idleTimer = setTimeout(() => { if (!state.recording) { disarmMic(); toast('Mic switched off after a few idle minutes.'); } }, MIC_IDLE_CLOSE_MS);
+    }
+    function meterLoop() {
+      const buf = new Float32Array(1024);
+      const tick = () => {
+        if (!mic.analyser) return;
+        mic.analyser.getFloatTimeDomainData(buf);
+        let peak = 0; for (const v of buf) peak = Math.max(peak, Math.abs(v));
+        const pct = Math.max(0, Math.min(100, (20 * Math.log10(peak + 1e-9) + 60) / 60 * 100));  // -60..0 dBFS
+        ['testMeter', 'recMeter'].forEach(id => { const el = $(id); if (el) el.style.width = pct + '%'; });
+        mic.raf = requestAnimationFrame(tick);
+      };
+      tick();
+    }
+    function updateMicButton() { const b = $('micTestBtn'); if (b) b.textContent = micIsOn() ? '⏹ Mic off' : 'Mic on'; }
+    async function toggleMicTest() {
+      if (micIsOn()) { disarmMic(); return; }
+      try { await armMic(); toast('Mic is on and warming up. It stays on between takes so recordings start at full level.', 5000); }
+      catch (e) { toast('Microphone blocked: ' + e.message, 6000); }
+    }
+    function encodeWav(chunks, sampleRate) {
+      const len = chunks.reduce((n, c) => n + c.length, 0);
+      const buf = new ArrayBuffer(44 + len * 2);
+      const v = new DataView(buf);
+      const str = (o, t) => { for (let i = 0; i < t.length; i++) v.setUint8(o + i, t.charCodeAt(i)); };
+      str(0, 'RIFF'); v.setUint32(4, 36 + len * 2, true); str(8, 'WAVE'); str(12, 'fmt ');
+      v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+      v.setUint32(24, sampleRate, true); v.setUint32(28, sampleRate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+      str(36, 'data'); v.setUint32(40, len * 2, true);
+      let o = 44;
+      for (const c of chunks) for (let i = 0; i < c.length; i++, o += 2) {
+        const x = Math.max(-1, Math.min(1, c[i]));
+        v.setInt16(o, x < 0 ? x * 0x8000 : x * 0x7fff, true);
+      }
+      return new Blob([buf], { type: 'audio/wav' });
+    }
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+    async function startRecording(emo) {
+      stopPlayback();
+      let fresh;
+      try { fresh = await armMic(); }
+      catch (e) { toast('Microphone blocked: ' + e.message + '. Allow mic access for this page.', 7000); return; }
+      if (mic.ctx.state === 'suspended') await mic.ctx.resume();
+      state.recording = { emotion: emo, countdown: fresh ? 'Warming up the mic…' : 3 };
+      renderProfile();
+      if (fresh) {
+        await sleep(MIC_WARMUP_MS - 2100);
+        if (!state.recording) return;
+        state.recording.countdown = 3; renderProfile();
+      }
+      for (const n of [2, 1]) {
+        await sleep(700);
+        if (!state.recording) return;
+        state.recording.countdown = n; renderProfile();
+      }
+      await sleep(700);
+      if (!state.recording) return;
+      state.recording.countdown = 0;
+      renderProfile();
+      mic.capture = [];
+      state.recording.started = Date.now();
+      state.recording.timer = setInterval(() => {
+        const t = $('recTime'); if (t && state.recording) t.textContent = ((Date.now() - state.recording.started) / 1000).toFixed(1);
+        if (state.recording && Date.now() - state.recording.started > 30000) stopRecording();  // safety cap
+      }, 100);
+    }
+    function stopRecording() {
+      const r = state.recording;
+      if (!r) return;
+      clearInterval(r.timer);
+      state.recording = null;
+      bumpIdle();
+      if (!mic.capture || !r.started) { mic.capture = null; renderProfile(); return; }  // cancelled during countdown
+      const chunks = mic.capture; mic.capture = null;
+      const sr = mic.ctx.sampleRate;
+      const seconds = chunks.reduce((n, c) => n + c.length, 0) / sr;
+      const emo = r.emotion;
+      if (state.takes[emo] && state.takes[emo].url) URL.revokeObjectURL(state.takes[emo].url);
+      const blob = encodeWav(chunks, sr);
+      state.takes[emo] = { blob, url: URL.createObjectURL(blob), seconds, ext: '.wav' };
+      renderProfile();
+      play(state.takes[emo].url, 'New take · listen back');
+    }
+    document.addEventListener('keydown', e => {
+      if (e.code === 'Space' && state.recording && !state.recording.countdown && !['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName) && !document.activeElement.isContentEditable) {
+        e.preventDefault(); stopRecording();
+      }
+    });
+    window.addEventListener('beforeunload', disarmMic);
+    function discardTake(emo) { if (state.takes[emo]) URL.revokeObjectURL(state.takes[emo].url); delete state.takes[emo]; renderProfile(); }
+    async function saveTake(emo) {
+      const take = state.takes[emo];
+      if (!take) return;
+      await sendClip(emo, new File([take.blob], `${emo}${take.ext}`, { type: take.blob.type }), 'browser');
+      discardTake(emo);
+    }
+    async function uploadTake(emo, input) {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      await sendClip(emo, file);
+      input.value = '';
+    }
+    async function sendClip(emo, file, source = 'upload') {
+      const p = active();
+      const form = new FormData();
+      form.append('emotion', emo);
+      form.append('source', source);
+      form.append('script', scriptFor(emo));
+      form.append('file', file);
+      state.busy[emo] = true; renderProfile();
+      try {
+        const d = await api(`/api/profiles/${p.id}/clips`, { method: 'POST', body: form });
+        state.profiles = d.profiles;
+        state.results[emo] = d;
+        const r = await api('/api/characters'); state.roster = r.characters;
+        const q = d.quality;
+        toast(q && q.tips.length ? `Saved, with ${q.tips.length} mic tip${q.tips.length === 1 ? '' : 's'}. Generating a test line…` : 'Saved. Generating a test line…', 5000);
+        renderProfiles();
+        state.busy[emo] = false; renderProfile();
+        await testSlot(emo, null);
+      } catch (e) { toast('Save failed: ' + e.message, 7000); }
+      state.busy[emo] = false; renderProfile();
+    }
+    async function linkVoice(emo, voiceId) {
+      const p = active();
+      try { const d = await api(`/api/profiles/${p.id}/clips/link`, { method: 'POST', body: JSON.stringify({ emotion: emo, character_id: voiceId }) }); state.profiles = d.profiles; }
+      catch (e) { toast('Failed: ' + e.message); }
+      delete state.results[emo];
+      renderProfiles(); renderProfile();
+    }
+    async function unlinkClip(emo) {
+      const p = active();
+      const d = await api(`/api/profiles/${p.id}/clips/${emo}`, { method: 'DELETE' });
+      state.profiles = d.profiles; delete state.results[emo];
+      renderProfiles(); renderProfile();
+    }
+
+    // ----------------------------------------------------------------- tests
+    const TEST_LINES = {
+      neutral: "Yeah, I'll be there around six. Do you want me to bring anything?",
+      happy: "That's amazing news, honestly, I'm so happy for you!",
+      excited: "We actually did it! I can't believe it worked!",
+      angry: "I told you not to touch it. I told you!",
+      annoyed: "Seriously? Again? Every single morning.",
+      sad: "I just thought he'd be here. That's all.",
+      scared: "Did you hear that? Something's outside the door.",
+      sarcastic: "Oh, great. Brilliant idea. Really well thought through.",
+      confused: "Wait, what? Since when do we have a cat?",
+      pleading: "Please, just this once. I'm begging you.",
+      tired: "I need to sit down. I've been on my feet all day.",
+      whispering: "Keep quiet, they're right outside.",
+      shouting: "Get out of the way! Move!",
+    };
+    async function speak(voiceId, text, label, btn) {
+      const old = btn ? btn.innerHTML : '';
+      if (btn) { btn.innerHTML = '<span class="spinner"></span>'; btn.disabled = true; }
+      try {
+        const engine = (active() || {}).engine || 'qwen3_clone';
+        const body = engine === 'chatterbox' ? { model_id: engine, character_id: voiceId, text } : { model_id: engine, character_id: voiceId, text, temperature: TEST_TEMP };
+        const d = await api('/api/synthesize', { method: 'POST', body: JSON.stringify(body) });
+        play(d.take.url, label);
+      } catch (e) { toast('Failed: ' + e.message, 6000); }
+      if (btn) { btn.innerHTML = old; btn.disabled = false; }
+    }
+    async function testSlot(emo, btn) {
+      const p = active();
+      const clip = clipFor(p, emo);
+      if (!clip) return;
+      const e = state.emotions.find(x => x.id === emo);
+      await speak(clip.character_id, TEST_LINES[emo] || TEST_LINES.neutral, `${p.name} · ${e.label} · test line`, btn);
+    }
+    async function testProfile(btn) {
+      const p = active();
+      const text = $('testLine').value.trim();
+      if (!text) { toast('Type a line first.'); return; }
+      let emo = $('testEmotion').value;
+      if (emo === 'auto') {
+        const d = await api(`/api/profiles/${p.id}/pick?text=${encodeURIComponent(text)}`);
+        emo = d.emotion;
+        if (!d.clip) { toast('Record at least one emotion first.'); return; }
+        const label = (state.emotions.find(x => x.id === d.clip.emotion) || {}).label || d.clip.emotion;
+        toast(`Using the ${label} clip.`);
+        return speak(d.clip.character_id, text, `${p.name} · ${label}`, btn);
+      }
+      const clip = clipFor(p, emo);
+      return speak(clip.character_id, text, `${p.name} · ${emo}`, btn);
+    }
+
+    listMics();
+    loadAll().catch(e => toast('Could not reach the server: ' + e.message));
+  </script>
+  <script src="/static/ui.js"></script>
+</body>
+</html>

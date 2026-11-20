@@ -797,6 +797,7 @@ def _phase_a_build_inner() -> None:
         media_tools as media_tools_router,  # Audio tools: ffmpeg/ffprobe/yt-dlp
         auth as auth_router,
         voice_convert,  # Studio Convert: speech-to-speech via ASR → TTS
+        voice_forge as voice_forge_router,  # Voice Forge game-dev UI & API
     )
     from api.routers import mcp_bindings as _mcp_bindings_router  # noqa: E402
     _router_modules.extend([
@@ -807,6 +808,7 @@ def _phase_a_build_inner() -> None:
         openai_compat, tts_stream, personas,
         pronunciation, settings_router,
         media_tools_router, auth_router, _mcp_bindings_router,
+        voice_forge_router,
     ])
     # Download-acceleration state, once, for triage-from-logs (FDL-03).
     try:
@@ -845,6 +847,10 @@ def _phase_a_finalize() -> None:
             logging.getLogger("omnivoice.api").info(
                 "MCP server not mounted (%s); /mcp disabled.", _mcp_err
             )
+
+    # Voice Forge static assets & audio mounts (before /audio so /audio/{scenes,takes,characters} match first).
+    from api.routers.voice_forge import mount_voice_forge_static
+    mount_voice_forge_static(app)
 
     # User and engine files: never served as a page (core/safe_static.py).
     from core.safe_static import SafeMediaFiles

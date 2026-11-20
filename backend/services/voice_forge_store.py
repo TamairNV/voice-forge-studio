@@ -63,6 +63,37 @@ def _dumps(val: Any) -> str:
     return json.dumps(val, ensure_ascii=False)
 
 
+def _fmt_timestamp(ts: Any) -> str:
+    if not ts:
+        return ""
+    if isinstance(ts, str):
+        return ts
+    try:
+        from datetime import datetime
+        return datetime.fromtimestamp(float(ts)).strftime("%Y-%m-%d %H:%M")
+    except Exception:
+        return ""
+
+
+def _to_timestamp(val: Any, fallback: float) -> float:
+    if val is None or val == "":
+        return fallback
+    if isinstance(val, (int, float)):
+        return float(val)
+    s = str(val).strip()
+    try:
+        return float(s)
+    except ValueError:
+        pass
+    from datetime import datetime
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M:%S"):
+        try:
+            return datetime.strptime(s[:19], fmt).timestamp()
+        except ValueError:
+            continue
+    return fallback
+
+
 # ---------------------------------------------------------------------------
 # Characters
 # ---------------------------------------------------------------------------
@@ -86,8 +117,8 @@ def _row_to_character(row: Any) -> Dict[str, Any]:
         "source_model": row["source_model"] or "",
         "favorite": bool(row["favorite"]),
         "tags": _loads(row["tags_json"], []),
-        "created_at": float(row["created_at"] or 0),
-        "updated_at": float(row["updated_at"] or 0),
+        "created_at": _fmt_timestamp(row["created_at"]),
+        "updated_at": _fmt_timestamp(row["updated_at"]),
     })
     if audio_file:
         out["file_path"] = str(vf_characters_dir() / audio_file)
@@ -130,8 +161,8 @@ def upsert_character(record: Dict[str, Any]) -> Dict[str, Any]:
     ensure_schema()
     now = time.time()
     char_id = str(record["id"])
-    created_at = float(record.get("created_at") or now)
-    updated_at = float(record.get("updated_at") or now)
+    created_at = _to_timestamp(record.get("created_at"), now)
+    updated_at = _to_timestamp(record.get("updated_at"), now)
     audio_file = str(record.get("audio_file") or "")
     if not audio_file and record.get("file_path"):
         audio_file = Path(str(record["file_path"])).name
@@ -217,9 +248,9 @@ def _row_to_profile(row: Any) -> Dict[str, Any]:
         "id": row["id"],
         "name": row["name"],
         "description": row["description"] or "",
-        "clips": _loads(row["clips_json"], {}),
-        "created_at": float(row["created_at"] or 0),
-        "updated_at": float(row["updated_at"] or 0),
+        "clips": _loads(row["clips_json"], []),
+        "created_at": _fmt_timestamp(row["created_at"]),
+        "updated_at": _fmt_timestamp(row["updated_at"]),
     })
     return out
 
@@ -256,9 +287,11 @@ def upsert_profile(record: Dict[str, Any]) -> Dict[str, Any]:
     ensure_schema()
     now = time.time()
     prof_id = str(record["id"])
-    created_at = float(record.get("created_at") or now)
-    updated_at = float(record.get("updated_at") or now)
-    clips = record.get("clips") or {}
+    created_at = _to_timestamp(record.get("created_at"), now)
+    updated_at = _to_timestamp(record.get("updated_at"), now)
+    clips = record.get("clips")
+    if clips is None:
+        clips = []
     extra = {k: v for k, v in record.items() if k not in _PROF_COLS}
     with db_conn() as conn:
         conn.execute(
@@ -318,8 +351,8 @@ def _row_to_cast(row: Any) -> Dict[str, Any]:
         "mapping": _loads(row["mapping_json"], {}),
         "lines": _loads(row["lines_json"], []),
         "temperature": row["temperature"],
-        "created_at": float(row["created_at"] or 0),
-        "updated_at": float(row["updated_at"] or 0),
+        "created_at": _fmt_timestamp(row["created_at"]),
+        "updated_at": _fmt_timestamp(row["updated_at"]),
     })
     return out
 
@@ -356,8 +389,8 @@ def upsert_cast(record: Dict[str, Any]) -> Dict[str, Any]:
     ensure_schema()
     now = time.time()
     cast_id = str(record["id"])
-    created_at = float(record.get("created_at") or now)
-    updated_at = float(record.get("updated_at") or now)
+    created_at = _to_timestamp(record.get("created_at"), now)
+    updated_at = _to_timestamp(record.get("updated_at"), now)
     extra = {k: v for k, v in record.items() if k not in _CAST_COLS}
     with db_conn() as conn:
         conn.execute(
@@ -429,7 +462,7 @@ def _row_to_scene(row: Any) -> Dict[str, Any]:
         "line_count": int(row["line_count"] or 0),
         "cast": _loads(row["cast_json"], {}),
         "segments": _loads(row["segments_json"], []),
-        "created_at": float(row["created_at"] or 0),
+        "created_at": _fmt_timestamp(row["created_at"]),
         "srt_url": f"/api/scenes/{scene_id}/subtitles.srt",
         "manifest_url": f"/api/scenes/{scene_id}/manifest.json",
         "bundle_zip_url": f"/api/scenes/{scene_id}/export.zip",
@@ -498,7 +531,7 @@ def upsert_scene(record: Dict[str, Any]) -> Dict[str, Any]:
                 _dumps(record.get("cast") or {}),
                 _dumps(record.get("segments") or []),
                 _dumps(extra),
-                float(record.get("created_at") or now),
+                _to_timestamp(record.get("created_at"), now),
             ),
         )
         conn.commit()
@@ -551,7 +584,7 @@ def _row_to_take(row: Any) -> Dict[str, Any]:
         "filename": filename,
         "duration_sec": float(row["duration_sec"] or 0),
         "elapsed_sec": float(row["elapsed_sec"] or 0),
-        "created_at": float(row["created_at"] or 0),
+        "created_at": _fmt_timestamp(row["created_at"]),
     })
     if filename:
         out["file_path"] = str(vf_takes_dir() / filename)
@@ -614,7 +647,7 @@ def upsert_take(record: Dict[str, Any]) -> Dict[str, Any]:
                 float(record.get("duration_sec") or 0),
                 float(record.get("elapsed_sec") or 0),
                 _dumps(extra),
-                float(record.get("created_at") or now),
+                _to_timestamp(record.get("created_at"), now),
             ),
         )
         conn.commit()
